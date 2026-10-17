@@ -1,6 +1,8 @@
 # Einrichtung ab dem verbundenen Apps-Script-Projekt
 
-Bestätigter Stand am 18.10.2026: Repository hochgeladen, CI erfolgreich, Pages-Quelle GitHub Actions gewählt, DNS `car.jurodak.com` → `julianrdk.github.io` geprüft. Cloud-Projekt, drei APIs, OAuth-App, eigener Testnutzer und fünf Bereiche sind laut Nutzer eingerichtet. Die öffentliche Client-ID ist lokal in `public/config.json` übernommen. Das eigenständige Script **Scala Fahrzeugakte Backend** ist laut Nutzer mit dem Cloud-Projekt verbunden. Die folgenden Schritte sind noch nicht als erledigt bestätigt.
+Bestätigter Stand am 18.10.2026: Repository hochgeladen, Pages-Quelle GitHub Actions und Custom domain bestätigt, DNS `car.jurodak.com` → `julianrdk.github.io` geprüft. Cloud-Projekt, drei APIs, OAuth-App, eigener Testnutzer und fünf Bereiche sind laut Nutzer eingerichtet. Das eigenständige Script **Scala Fahrzeugakte Backend** ist laut Nutzer mit dem Cloud-Projekt verbunden. Nach der Anleitung für die Schritte 1–5 wurde die Deployment-ID übermittelt. Client-ID und Deployment-ID stehen in `public/config.json`; alle drei Repository-Variablen sind gesetzt und zurückgelesen. [Build, Tests und erster Pages-Deploy](https://github.com/julianrdk/scala-fahrzeugakte/actions/runs/39079721374) waren erfolgreich. Die öffentliche Konfiguration ist über HTTP erreichbar und stimmt überein.
+
+**Jetzt ab Abschnitt 6 fortsetzen:** Autorisierte Domain im OAuth-Branding ergänzen und HTTPS abwarten. GitHub meldete zuletzt **The certificate does not exist yet**; HTTPS-Erzwingung war deshalb noch nicht möglich. Google-Anmeldung und echte Datenprüfungen erst über gültiges HTTPS beginnen. Die GitHub-Variablen und der erfolgreiche Actions-Lauf aus Abschnitt 6 sind bereits erledigt. Schritte 1–5 dienen als Referenz; ausgelassene oder fehlgeschlagene Schritte gegebenenfalls nachholen.
 
 ## 1. Programmcode einfügen
 
