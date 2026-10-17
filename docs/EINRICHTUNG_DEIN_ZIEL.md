@@ -28,15 +28,16 @@ Bestätigt am 18. Oktober 2026:
 - Die drei öffentlichen Repository-Variablen `PAGES_DOMAIN`, `GOOGLE_CLIENT_ID`, `GOOGLE_DEPLOYMENT_ID` gesetzt und zurückgelesen; lokale Release-Konfiguration und Build erfolgreich geprüft
 - [Erster vollständiger Actions-Lauf](https://github.com/julianrdk/scala-fahrzeugakte/actions/runs/39079721374): Build einschließlich `pnpm check` und Pages-Deploy erfolgreich, Commit `5624f59`
 - Öffentliche Konfiguration unter `http://car.jurodak.com/config.json` abgerufen; Origin, Client-ID und Deployment-ID stimmen mit der lokalen Konfiguration überein
+- Gültiges HTTPS mit regulärer Zertifikatsprüfung und passender Live-Konfiguration bestätigt. GitHub meldet Zertifikat **approved**; **Enforce HTTPS** wurde aktiviert und über die API als `true` zurückgelesen. Ein unmittelbar folgender HTTP-Abruf lieferte noch eine zwischengespeicherte 200-Antwort; die Weiterleitung am Edge ist noch nicht separat bestätigt.
+- Nutzer meldet beim ersten Lese-/Schreibtest einen Integritätsfehler; Anmeldung zuvor erfolgreich, keine eigenen Tabellenänderungen. Cache-Fehler im bisherigen Backend reproduziert und korrigiert; alle 76 Tests und Build erfolgreich. Aktualisierter Code liegt in `apps-script/dist/Code.js` bereit.
 
 Noch nicht bestätigt oder eingerichtet:
 
-- HTTPS-Zertifikat für die Subdomain: HTTPS-Abruf meldet noch einen Zertifikats-Namensfehler; GitHub bestätigt beim Aktivierungsversuch **The certificate does not exist yet**. HTTPS-Erzwingung ist deshalb noch nicht aktiviert.
 - Autorisierte Domain `jurodak.com` im OAuth-Branding ergänzen; Origin und gespeicherte Scopes beim echten Verbindungstest prüfen
 - Echter API-Aufruf zur Bestätigung des bereitgestellten Codes und der privaten Script-Konfiguration
 - Eigentümeradresse, private Tabellen/Ordner und täglicher Editortrigger
 - Echter Lese-/Schreibtest und ausdrücklich angeforderte Testmail
 
-Nächster Schritt: autorisierte Domain `jurodak.com` im OAuth-Branding ergänzen. In GitHub Pages die Zertifikatsausstellung abwarten und **Enforce HTTPS** aktivieren, sobald verfügbar. Erst nach erfolgreichem HTTPS den echten Lese-/Schreibtest auf `https://car.jurodak.com` starten. Die gebündelte Anleitung steht in [WEITER_HIER.md](WEITER_HIER.md). Das Client-Secret bleibt privat. Veröffentlichungsstatus zunächst **Testing** lassen.
+Nächster Schritt: aktualisierten Inhalt von `apps-script/dist/Code.js` in das vorhandene `Code.gs` übernehmen, speichern und unter **Bereitstellen → Bereitstellungen verwalten → Bearbeiten → Version: Neue Version** das bestehende API-Deployment aktualisieren. Die Deployment-ID bleibt erhalten. Bestehende Tabelle und Properties weiterverwenden, danach den echten Lese-/Schreibtest erneut ausführen. Details stehen in [WEITER_HIER.md](WEITER_HIER.md). Autorisierte Domain `jurodak.com` im OAuth-Branding ergänzen, falls noch offen. Das Client-Secret bleibt privat. Veröffentlichungsstatus zunächst **Testing** lassen.
 
 Eine erfolgreiche lokale Konfigurationsprüfung ersetzt weder den GitHub-Deploy noch den echten Google-Verbindungstest. Die Veröffentlichung wird erst nach bestätigtem Pages-Deploy als erledigt vermerkt. Bestehende Einträge der Hauptdomain `jurodak.com` bleiben unverändert.

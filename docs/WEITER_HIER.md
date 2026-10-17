@@ -2,7 +2,13 @@
 
 Bestätigter Stand am 18.10.2026: Repository hochgeladen, Pages-Quelle GitHub Actions und Custom domain bestätigt, DNS `car.jurodak.com` → `julianrdk.github.io` geprüft. Cloud-Projekt, drei APIs, OAuth-App, eigener Testnutzer und fünf Bereiche sind laut Nutzer eingerichtet. Das eigenständige Script **Scala Fahrzeugakte Backend** ist laut Nutzer mit dem Cloud-Projekt verbunden. Nach der Anleitung für die Schritte 1–5 wurde die Deployment-ID übermittelt. Client-ID und Deployment-ID stehen in `public/config.json`; alle drei Repository-Variablen sind gesetzt und zurückgelesen. [Build, Tests und erster Pages-Deploy](https://github.com/julianrdk/scala-fahrzeugakte/actions/runs/39079721374) waren erfolgreich. Die öffentliche Konfiguration ist über HTTP erreichbar und stimmt überein.
 
-**Jetzt ab Abschnitt 6 fortsetzen:** Autorisierte Domain im OAuth-Branding ergänzen und HTTPS abwarten. GitHub meldete zuletzt **The certificate does not exist yet**; HTTPS-Erzwingung war deshalb noch nicht möglich. Google-Anmeldung und echte Datenprüfungen erst über gültiges HTTPS beginnen. Die GitHub-Variablen und der erfolgreiche Actions-Lauf aus Abschnitt 6 sind bereits erledigt. Schritte 1–5 dienen als Referenz; ausgelassene oder fehlgeschlagene Schritte gegebenenfalls nachholen.
+**Jetzt fortsetzen: Backend-Korrektur übernehmen.** Der erste Lese-/Schreibtest meldete einen Integritätsfehler, obwohl laut Nutzer keine Tabellenzellen geändert wurden. Der alte Code konnte nach dem API-Schreiben zwischengespeicherte SpreadsheetApp-Werte lesen. Dies wurde reproduziert und durch gemeinsames Lesen der Daten und Prüfsumme über dieselbe Sheets-API korrigiert. Alle 76 Tests und der Build bestehen; die echte Google-Prüfung der Korrektur steht noch aus.
+
+1. Den aktuellen lokalen Inhalt von `apps-script\dist\Code.js` vollständig in das vorhandene `Code.gs` kopieren und speichern. Manifest und Script Properties weiterverwenden.
+2. **Bereitstellen → Bereitstellungen verwalten** öffnen, bestehende API-Bereitstellung auswählen, auf den Stift **Bearbeiten** klicken und bei **Version** die Option **Neue Version** wählen. **Bereitstellen** klicken. Dadurch bleibt die Deployment-ID erhalten.
+3. Die Website neu laden, mit Google verbinden und den **Lese-/Schreibtest** erneut starten. Die vorhandene Tabelle bleibt erhalten; keine Zellen, Ressourcen-IDs oder `_Integrity` ändern und keine neue Akte initialisieren. Bei einem erneuten Fehler den genauen Text festhalten.
+
+HTTPS ist inzwischen mit gültigem Zertifikat erreichbar, die Live-Konfiguration stimmt überein und GitHub bestätigt **Enforce HTTPS = true**. Die GitHub-Variablen und der erfolgreiche Actions-Lauf aus Abschnitt 6 sind bereits erledigt. Autorisierte Domain im OAuth-Branding ergänzen, falls noch offen; nach erfolgreicher Korrektur mit Abschnitt 7 fortsetzen. Schritte 1–5 dienen als Referenz; ausgelassene oder fehlgeschlagene Schritte gegebenenfalls nachholen.
 
 ## 1. Programmcode einfügen
 

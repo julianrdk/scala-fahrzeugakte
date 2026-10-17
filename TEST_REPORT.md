@@ -4,7 +4,7 @@ Prüfstand der lokalen Abnahme: 18. Oktober 2026, Europe/Berlin. Lokale Umsetzun
 
 ## Automatisierte Prüfungen
 
-`pnpm check`: **73 Tests in 5 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild und Apps-Script-Build. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Veröffentlichungsartefakte enthalten nur Frontend und öffentliche Konfiguration.
+Vollständige lokale Prüfung nach der Cache-Korrektur: **76 Tests in 5 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild und Apps-Script-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Veröffentlichungsartefakte enthalten nur Frontend und öffentliche Konfiguration.
 
 `pnpm audit --json`: nach Aktualisierung der Pakete **0 gemeldete Schwachstellen**. Dies ist der Stand der abgefragten Registry, keine Garantie für künftige Meldungen. Exakte Versionen und Integritätshashes im Lockfile.
 
@@ -25,6 +25,12 @@ Prüfstand der lokalen Abnahme: 18. Oktober 2026, Europe/Berlin. Lokale Umsetzun
 | Wiederherstellung | Tatsächlicher ZIP/CSV-Rundlauf und simulierte neue Google-Ressourcen; neue Drive-IDs, gleiche Originalbytes, Hashes, Beträge und Links; fehlende Teile abgewiesen |
 
 **Simuliert bedeutet:** Die Tests führen den echten Backend-/Adaptercode gegen kontrollierte lokale Google-Service-Ersatzobjekte aus. Sie beweisen keine realen Google-Berechtigungen, Servicequoten oder Mailzustellung.
+
+## Erster echter Verbindungstest: falsche Integritätsmeldung
+
+Der Nutzer konnte sich verbinden; erst der Lese-/Schreibtest meldete eine direkte Tabellenänderung. Er bestätigte, keine Tabellenzellen geändert zu haben. Der bisherige Code kombinierte Advanced-Sheets-API-Schreibvorgänge mit SpreadsheetApp-Lesevorgängen. Ein Test mit zwischengespeicherten SpreadsheetApp-Werten reproduziert exakt die Fehlermeldung beim Rücklesen des frisch geschriebenen Prüfeintrags. Ein zweiter Regressionstest zeigt, dass derselbe alte Cache echte Änderungen verdecken konnte.
+
+Die Korrektur liest alle Datenblätter und `_Integrity` gemeinsam per `Sheets.Spreadsheets.get` und verwendet die rohen `userEnteredValue`-Felder. Die Prüfsummenberechnung und das Speicherformat bleiben gleich. Es gibt keine neue Prüfsumme für ungeprüfte Daten, keine automatische Freischaltung und keinen Datenreset. Beide Regressionstests sowie ein zusätzlicher Formeltest bestehen; auch alle bisherigen Tests bestehen. **Der korrigierte Code muss noch im bestehenden Apps-Script-Deployment als neue Version übernommen und im echten Konto erneut geprüft werden.** Ein erfolgreicher lokaler Test ersetzt diese Bestätigung nicht.
 
 ## Browserprüfung
 
