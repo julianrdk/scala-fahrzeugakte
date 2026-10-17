@@ -1,0 +1,5 @@
+import fs from 'node:fs';import vm from 'node:vm';
+const code=fs.readFileSync('apps-script/dist/Code.js','utf8');const context=vm.createContext({});vm.runInContext(code,context,{timeout:10000});for(const name of ['scalaApi','setupOwner','installOwnerTrigger','dailyOwnerTask'])if(typeof context[name]!=='function')throw Error('Öffentliche Apps-Script-Funktion nicht ladbar: '+name);
+if(!fs.existsSync('dist/CNAME')||fs.readFileSync('dist/CNAME','utf8').trim()!==new URL(JSON.parse(fs.readFileSync('public/config.json','utf8')).origin).hostname)throw Error('Zieldomain fehlt im Build.');
+for(const forbidden of ['OWNER_EMAIL','REMINDER_EMAIL','BACKUP_FOLDER_ID','TEST_TOKEN_ONLY_IN_MEMORY']){for(const file of fs.readdirSync('dist/assets'))if(fs.readFileSync('dist/assets/'+file,'utf8').includes(forbidden))throw Error('Unzulässige private/testinterne Konfiguration im öffentlichen Bundle: '+forbidden);}
+console.log('Apps-Script-Bundle ohne Browser-/Node-Globals ladbar; Einstiegspunkte und Veröffentlichungstrennung geprüft.');

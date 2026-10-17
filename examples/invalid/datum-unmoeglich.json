@@ -1,0 +1,76 @@
+{
+  "format": "vehicle-record-import",
+  "schema_version": 1,
+  "import_id": null,
+  "vehicle_label": null,
+  "documents": [
+    {
+      "ref": "doc1",
+      "source_filename": "BEISPIEL-Rechnung-1.pdf",
+      "title": "Beispielrechnung 1",
+      "document_type": "invoice"
+    },
+    {
+      "ref": "doc2",
+      "source_filename": "BEISPIEL-Rechnung-2.pdf",
+      "title": "Beispielrechnung 2",
+      "document_type": "invoice"
+    },
+    {
+      "ref": "doc3",
+      "source_filename": "BEISPIEL-Rechnung-3.pdf",
+      "title": "Beispielrechnung 3",
+      "document_type": "invoice"
+    }
+  ],
+  "expenses": [
+    {
+      "ref": "expense1",
+      "title": "TESTRECHNUNG 1",
+      "category": "Wartung & Reparatur",
+      "date": "2026-02-30",
+      "odometer_km": null,
+      "amount_cents": 1000,
+      "currency": "EUR",
+      "vendor": "Beispielhändler",
+      "invoice_number": "NUR-TEST-1",
+      "document_refs": [
+        "doc1"
+      ],
+      "notes": "Kaufdatum laut Beispielrechnung."
+    },
+    {
+      "ref": "expense2",
+      "title": "TESTRECHNUNG 2",
+      "category": "Wartung & Reparatur",
+      "date": "2026-10-10",
+      "odometer_km": null,
+      "amount_cents": 2000,
+      "currency": "EUR",
+      "vendor": "Beispielhändler",
+      "invoice_number": "NUR-TEST-2",
+      "document_refs": [
+        "doc2"
+      ],
+      "notes": "Kaufdatum laut Beispielrechnung."
+    },
+    {
+      "ref": "expense3",
+      "title": "TESTRECHNUNG 3",
+      "category": "Wartung & Reparatur",
+      "date": "2026-10-10",
+      "odometer_km": null,
+      "amount_cents": 3000,
+      "currency": "EUR",
+      "vendor": "Beispielhändler",
+      "invoice_number": "NUR-TEST-3",
+      "document_refs": [
+        "doc3"
+      ],
+      "notes": "Kaufdatum laut Beispielrechnung."
+    }
+  ],
+  "work": [],
+  "reminders": [],
+  "warnings": []
+}

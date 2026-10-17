@@ -1,0 +1,36 @@
+{
+  "name": "scala-fahrzeugakte",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1",
+    "schema": "node scripts/schema.mjs",
+    "build:backend": "node scripts/build-backend.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm typecheck && vite build && pnpm build:backend && node scripts/verify-artifacts.mjs",
+    "test": "vitest run",
+    "check": "pnpm test && pnpm build",
+    "configure": "node scripts/configure.mjs",
+    "package:source": "node scripts/package-source.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "ajv": "8.20.0",
+    "fflate": "0.8.3",
+    "lucide-react": "0.468.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.0",
+    "@types/react-dom": "19.1.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.5",
+    "@types/node": "24.10.1"
+  },
+  "packageManager": "pnpm@11.25.0"
+}

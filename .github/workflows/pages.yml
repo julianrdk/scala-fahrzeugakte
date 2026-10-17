@@ -1,0 +1,57 @@
+name: Prüfen und auf eigener Domain veröffentlichen
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/configure.mjs --ci
+        env:
+          PAGES_DOMAIN: ${{ vars.PAGES_DOMAIN }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GOOGLE_DEPLOYMENT_ID: ${{ vars.GOOGLE_DEPLOYMENT_ID }}
+      - run: pnpm check
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.PAGES_DOMAIN != '' && vars.GOOGLE_CLIENT_ID != '' && vars.GOOGLE_DEPLOYMENT_ID != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/configure.mjs --ci
+        env:
+          PAGES_DOMAIN: ${{ vars.PAGES_DOMAIN }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GOOGLE_DEPLOYMENT_ID: ${{ vars.GOOGLE_DEPLOYMENT_ID }}
+      - run: node scripts/validate-release.mjs
+      - name: Auf GitHub Pages bereitstellen
+        id: deployment
+        uses: actions/deploy-pages@v4

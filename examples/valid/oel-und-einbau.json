@@ -1,0 +1,53 @@
+{
+  "format": "vehicle-record-import",
+  "schema_version": 1,
+  "import_id": null,
+  "vehicle_label": "Škoda Scala",
+  "documents": [
+    {
+      "ref": "doc1",
+      "source_filename": "Rechnung.pdf",
+      "title": "Öl und Filter – Beispielrechnung",
+      "document_type": "invoice"
+    }
+  ],
+  "expenses": [
+    {
+      "ref": "expense1",
+      "title": "Öl und Ölfilter",
+      "category": "Wartung & Reparatur",
+      "date": "2026-10-10",
+      "odometer_km": null,
+      "amount_cents": 6500,
+      "currency": "EUR",
+      "vendor": "Beispielhändler",
+      "invoice_number": "BEISPIEL-123",
+      "document_refs": [
+        "doc1"
+      ],
+      "notes": "Kaufdatum laut Beispielrechnung."
+    }
+  ],
+  "work": [
+    {
+      "ref": "work1",
+      "title": "Öl und Ölfilter gewechselt",
+      "kind": "maintenance",
+      "status": "completed",
+      "date": "2026-10-17",
+      "odometer_km": 83200,
+      "performed_by": "self",
+      "description": "Durchführung laut Nutzer; keine Menge oder Freigabe angegeben.",
+      "expense_refs": [
+        "expense1"
+      ],
+      "document_refs": [
+        "doc1"
+      ]
+    }
+  ],
+  "reminders": [],
+  "warnings": [
+    "Ölspezifikation und tatsächlich eingefüllte Menge nicht angegeben."
+  ]
+}
