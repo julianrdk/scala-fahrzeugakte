@@ -28,7 +28,7 @@ HTTPS-Zertifikat abwarten, **Enforce HTTPS** aktivieren. Die Domainprüfung kann
 
 In der [Cloud Console](https://console.cloud.google.com/) ein Standardprojekt anlegen oder ein geeignetes eigenes verwenden. Projekt-ID und **numerische Projektnummer** unterscheiden. Apps Script und der OAuth-Web-Client müssen diesem selben Standardprojekt zugeordnet sein. Ein automatisch von Apps Script angelegtes Standard-**Default**-Projekt genügt nicht.
 
-In APIs & Services die **Google Apps Script API**, **Google Sheets API** und **Google Drive API** aktivieren. Im [Apps-Script-Dashboard](https://script.google.com/home/usersettings) zusätzlich den Zugriff der Apps Script API einschalten. Keine Service Accounts; sie werden von diesem Ausführungsweg nicht unterstützt.
+In APIs & Services die **Google Apps Script API**, **Google Sheets API** und **Google Drive API** aktivieren. Der zusätzliche API-Zugriffsschalter im Apps-Script-Dashboard ist für das hier verwendete `scripts.run` nicht erforderlich; er betrifft Anwendungen, die Script-Inhalte oder Deployments verwalten. Siehe [Google: API-Autorisierung und Zugriff](https://developers.google.com/apps-script/api/how-tos/enable). Keine Service Accounts; sie werden von diesem Ausführungsweg nicht unterstützt.
 
 ## 4. Google Auth Platform / OAuth
 
