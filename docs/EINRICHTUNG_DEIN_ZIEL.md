@@ -5,7 +5,7 @@ Bestätigtes Ziel: **https://car.jurodak.com**. Die Hauptdomain **jurodak.com** 
 Schon vorbereitet:
 
 - `public/CNAME` = `car.jurodak.com`
-- `public/config.json` mit passender Origin und übernommener öffentlicher Client-ID; API-executable-Deployment-ID noch ausdrücklich als Platzhalter
+- `public/config.json` mit passender Origin, öffentlicher Client-ID und übernommener API-executable-Deployment-ID
 - `config/script-properties.example.json` mit derselben Origin; Eigentümerkonto und eigene Mailadresse noch offen
 - Pages-Workflow mit separater Prüfung vor Deployment
 - GitHub-Ziel geprüft: `julianrdk/scala-fahrzeugakte`; GitHub-Pages-Host für den DNS-CNAME: `julianrdk.github.io`
@@ -23,16 +23,18 @@ Bestätigt am 18. Oktober 2026:
 - Nutzer hat den OAuth-Web-Client erstellt und die öffentliche Client-ID übermittelt; diese ist in `public/config.json` eingetragen
 - Nutzer hat das eigenständige Apps-Script-Projekt **Scala Fahrzeugakte Backend** angelegt
 - Nutzer hat das Apps-Script-Projekt mit dem vorhandenen Standard-Cloud-Projekt verbunden
+- Nutzer hat nach der Anleitung für Code, Manifest, Script Properties, Setup und Bereitstellung die Deployment-ID übermittelt; diese ist in `public/config.json` eingetragen
+- GitHub-Pages-Custom-domain `car.jurodak.com` und Build-Typ **workflow** über die GitHub-API bestätigt
+- Die drei öffentlichen Repository-Variablen `PAGES_DOMAIN`, `GOOGLE_CLIENT_ID`, `GOOGLE_DEPLOYMENT_ID` gesetzt und zurückgelesen; lokale Release-Konfiguration und Build erfolgreich geprüft
 
 Noch nicht bestätigt oder eingerichtet:
 
-- GitHub-Pages-Zuordnung der Custom domain unabhängig geprüft
 - HTTPS-Zertifikat für die Subdomain
 - Autorisierte Domain `jurodak.com` im OAuth-Branding ergänzen; Origin und gespeicherte Scopes beim echten Verbindungstest prüfen
-- Apps-Script-Deployment im selben Cloud-Projekt
+- Echter API-Aufruf zur Bestätigung des bereitgestellten Codes und der privaten Script-Konfiguration
 - Eigentümeradresse, private Tabellen/Ordner und täglicher Editortrigger
 - Echter Lese-/Schreibtest und ausdrücklich angeforderte Testmail
 
-Nächster Schritt: den vorbereiteten Code und das Manifest ins bestehende Apps-Script-Projekt übernehmen, die drei privaten Script Properties setzen und **setupOwner** im Editor ausführen. Die gebündelte Anleitung ab diesem bestätigten Stand steht in [WEITER_HIER.md](WEITER_HIER.md). Das Client-Secret bleibt privat. Veröffentlichungsstatus zunächst **Testing** lassen.
+Nächster Schritt: den vorbereiteten Commit veröffentlichen, erfolgreichen Pages-Deploy und HTTPS bestätigen. Danach den echten Lese-/Schreibtest auf `https://car.jurodak.com` starten. Die gebündelte Anleitung steht in [WEITER_HIER.md](WEITER_HIER.md). Das Client-Secret bleibt privat. Veröffentlichungsstatus zunächst **Testing** lassen.
 
-Die Website ist noch nicht veröffentlicht: Der Workflow überspringt die Bereitstellung, bis Domain, OAuth-Client-ID und API-executable-Deployment-ID als Repository-Variablen vollständig vorliegen. Der bestätigte DNS-Eintrag allein ersetzt diese Einrichtung nicht. Bestehende Einträge der Hauptdomain `jurodak.com` bleiben unverändert.
+Eine erfolgreiche lokale Konfigurationsprüfung ersetzt weder den GitHub-Deploy noch den echten Google-Verbindungstest. Die Veröffentlichung wird erst nach bestätigtem Pages-Deploy als erledigt vermerkt. Bestehende Einträge der Hauptdomain `jurodak.com` bleiben unverändert.
