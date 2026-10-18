@@ -4,7 +4,7 @@ Prüfstand der lokalen Abnahme: 18. Oktober 2026, Europe/Berlin. Lokale Umsetzun
 
 ## Automatisierte Prüfungen
 
-Vollständige lokale Prüfung nach dem optionalen Cloudflare-Anmeldeumbau: **105 Tests in 7 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut.
+Vollständige lokale Prüfung nach dem optionalen Cloudflare-Anmeldeumbau: **122 Tests in 9 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut.
 
 `pnpm audit --json`: nach Aktualisierung der Pakete **0 gemeldete Schwachstellen**. Dies ist der Stand der abgefragten Registry, keine Garantie für künftige Meldungen. Exakte Versionen und Integritätshashes im Lockfile.
 
@@ -70,3 +70,11 @@ Nachweise: [Desktop im Testmodus](docs/screenshots/desktop-testmodus.png), [mobi
 Die kleinste konkrete Folge steht in [docs/EINRICHTUNG_DEIN_ZIEL.md](docs/EINRICHTUNG_DEIN_ZIEL.md) und ausführlich in [SETUP.md](SETUP.md): neues GitHub-Repository, DNS/HTTPS für car.jurodak.com, gemeinsames Standard-Cloud-Projekt, Eigentümer-Properties und MYSELF-API-Deployment, echter Lese-/Schreibdurchstich, Editortrigger, bewusst angeforderte Testmail, realer Export/Restore und PDF-Probedruck.
 
 Das optionale Tankerkönig-/Kartenmodul ist nicht Teil der aktivierten Version; dafür werden weder Preise simuliert noch ein Key erfordert. Die Kernakte funktioniert unabhängig davon. Diese Grenzen sind keine erfolgreichen Produktivnachweise.
+
+## Neutrale Oberfläche und Kontentrennung
+
+Neue Speicher beginnen mit leeren Hersteller-/Modellfeldern; die reservierte Fahrzeugzeile bleibt für Speicherversion 1 bestehen und wird erst nach ausdrücklichem Hinzufügen angezeigt. Bestehende Fahrzeuge werden nicht verändert. SSR-Prüfung der Anmelde- und Hinzufügeansicht ohne Marken-/Modellvorgaben. JSON-Vertrag unverändert; allgemeiner Erfassungsprompt als zusätzliche Fassung.
+
+Acht zusätzliche Google-Backendtests mit drei simulierten Konten prüfen eigene Ressourcen/Kosten, keine Dateierstellung vor Fahrzeugbestätigung, kein Rückfall auf bestehende Eigentümerressourcen, manipulierte Ressourcen, fremde Restore-Kennungen, fehlende Identität und eigenen Mail-/Sicherungslauf. Sieben zusätzliche Cloudflare-Tests prüfen die ausdrückliche Freischaltung, kontoabhängige Bearer/CSRF/Sitzungen, getrenntes Abmelden, vertauschte verschlüsselte Tokens, Berliner Sommer-/Winterzeit und Verarbeitung/Lease/Retry der Tagesprüfung. Kein zweiter echter Google-/Cloudflare-Kontotest behauptet.
+
+Browserprüfung der neutralen Fassung: 360 × 800, neuer lokaler Testmodus → leere Hinzufügeansicht → Volkswagen Golf (2020) bestätigt hinzugefügt; eigener Fahrzeugname in Übersicht und Formular, danach Abmelden ohne Modellanzeige. Kein horizontaler Überlauf: mobil 345/345, Desktop 1265/1265. Bilder: docs/screenshots/fahrzeugakte-anmeldung-neutral.png, fahrzeug-hinzufuegen-neutral.png und fahrzeugakte-golf-desktop-test.png. Ausschließlich lokale Testdaten, kein zweites echtes Konto.

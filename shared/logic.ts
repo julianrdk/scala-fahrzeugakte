@@ -41,7 +41,7 @@ export function blankPackage():ImportPackage{return {format:'vehicle-record-impo
 export function meta(id:string,at:string,vehicle_id='vehicle-1'):Meta{return {id,vehicle_id,revision:1,created_at:at,updated_at:at,archived:false,voided:false};}
 export function emptyState(at=new Date().toISOString()):State{
  const s={schema_version:1} as State;for(const t of tables)(s[t] as unknown[])=[];
- s.Vehicles.push({...meta('vehicle-1',at),manufacturer:'Škoda',model:'Scala',year:null,first_registration:null,engine:null,vin:null,plate:null,purchase_date:null,purchase_odometer:null,fuel_type:null,photo_id:null});
+ s.Vehicles.push({...meta('vehicle-1',at),manufacturer:'',model:'',year:null,first_registration:null,engine:null,vin:null,plate:null,purchase_date:null,purchase_odometer:null,fuel_type:null,photo_id:null});
  s.Settings.push({...meta('settings',at),hidden_categories:[],external_fuel_url:'https://www.clever-tanken.de/',email_enabled:false,prompt_templates:{...researchTemplates},backup_retention:14});return s;
 }
 export function currentOdometer(s:State){

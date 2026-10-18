@@ -3,6 +3,7 @@ node_modules/
 dist/
 apps-script/dist/
 auth/dist/
+auth/scheduler-dist/
 .dev.vars*
 .wrangler/
 .env*

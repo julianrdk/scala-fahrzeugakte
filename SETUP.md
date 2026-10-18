@@ -1,3 +1,5 @@
+> Für die inzwischen gewünschte gemeinsame Website mit getrennten Google-Konten gilt [CLOUDFLARE_ANMELDUNG.md](docs/CLOUDFLARE_ANMELDUNG.md). Die folgende Anleitung beschreibt den weiterhin verfügbaren bisherigen Einzelkontoweg.
+
 # Einrichtung – Schritt für Schritt
 
 Stand der technischen Quellenprüfung: 18. Oktober 2026. Zieldomain car.jurodak.com ist bestätigt; Kontokonfiguration, Veröffentlichung und Google-Verbindung stehen noch aus. Alle Platzhalter sind sichtbar. Der lokale Testadapter ersetzt keinen Verbindungstest.

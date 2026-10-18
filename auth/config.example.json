@@ -2,11 +2,11 @@
   "variables": {
     "APP_ORIGIN": "https://car.jurodak.com",
     "AUTH_ORIGIN": "https://auth.jurodak.com",
+    "ACCOUNT_MODE": "multi",
     "GOOGLE_CLIENT_ID": "642087309179-uoqjosp5sn8sjlj038v0fqva6q96hsdk.apps.googleusercontent.com",
     "GOOGLE_DEPLOYMENT_ID": "AKfycby7KqIVJIPxkOdTjvUStd_p8qBAMv4KZsVO05qoQuKKEkw988_AsfBPU5Cd5iXS5ucG-w"
   },
   "secrets": {
-    "OWNER_EMAIL": "DEINE_BISHERIGE_GOOGLE_EIGENTUEMERADRESSE",
     "GOOGLE_CLIENT_SECRET": "NUR_AUS_GOOGLE_AUTH_PLATFORM_DIREKT_BEI_CLOUDFLARE_EINTRAGEN",
     "TOKEN_KEY": "INHALT_AUS_config/private-auth-key.txt"
   },

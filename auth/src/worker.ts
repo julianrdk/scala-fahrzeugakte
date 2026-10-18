@@ -14,12 +14,14 @@ export interface Env {
   GOOGLE_DEPLOYMENT_ID: string;
   OWNER_EMAIL: string;
   TOKEN_KEY: string;
+  ACCOUNT_MODE?: 'owner'|'multi';
 }
 type Tokens = {access: string; refresh: string; expires: number};
 type Session = {owner_sub: string; owner_email: string; csrf: string; expires_at: number; tokens: string};
 const SESSION = '__Host-scala_session', LOGIN = '__Host-scala_login';
 const DAY = 86400000, MAX_BODY = 7 * 1024 * 1024;
-const actions = new Set(['read','status','smoke','upload','commit','edit','attachDocument','document','odometer','completeReminder','backup','restoreStart','restoreUpload','restorePreview','restoreSwitch','orphanFiles','testMail']);
+const actions = new Set(['read','status','createVehicle','smoke','upload','commit','edit','attachDocument','document','odometer','completeReminder','backup','restoreStart','restoreUpload','restorePreview','restoreSwitch','orphanFiles','testMail']);
+const multiUser = (env:Env) => env.ACCOUNT_MODE === 'multi';
 const encoder = new TextEncoder();
 class HttpError extends Error {constructor(public status: number, message: string) {super(message);}}
 function fail(status: number, message: string): never {throw new HttpError(status, message);}
@@ -43,7 +45,8 @@ function configured(env: Env) {
   return !!env.DB && validOrigin(env.APP_ORIGIN) && validOrigin(env.AUTH_ORIGIN)
     && env.APP_ORIGIN !== env.AUTH_ORIGIN && env.GOOGLE_CLIENT_ID?.endsWith('.apps.googleusercontent.com')
     && /^[\w-]{20,}$/.test(env.GOOGLE_DEPLOYMENT_ID ?? '') && !!env.GOOGLE_CLIENT_SECRET?.trim()
-    && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(env.OWNER_EMAIL?.trim() ?? '') && /^[\w-]{43}$/.test(env.TOKEN_KEY?.trim() ?? '');
+    && (!env.ACCOUNT_MODE||['owner','multi'].includes(env.ACCOUNT_MODE))
+    && (multiUser(env)||/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(env.OWNER_EMAIL?.trim() ?? '')) && /^[\w-]{43}$/.test(env.TOKEN_KEY?.trim() ?? '');
 }
 function cookie(request: Request, name: string) {
   const values = (request.headers.get('Cookie') ?? '').split(';').map(x => x.trim()).filter(x => x.startsWith(name+'='));
@@ -64,7 +67,7 @@ function requireOrigin(request: Request, env: Env) {if(request.headers.get('Orig
 async function session(request: Request, env: Env): Promise<Session> {
   const raw = cookie(request,SESSION); if(!raw) fail(401,'Bitte erneut mit Google anmelden.');
   const s = await env.DB.prepare('SELECT s.owner_sub, s.csrf, s.expires_at, c.owner_email, c.tokens FROM sessions s JOIN credentials c ON c.owner_sub = s.owner_sub WHERE s.session_hash = ? AND s.expires_at > ?').bind(await hash(raw),Date.now()).first<Session>();
-  if(!s || s.owner_email !== env.OWNER_EMAIL.trim().toLowerCase()) fail(401,'Bitte erneut mit Google anmelden.');
+  if(!s || !multiUser(env)&&s.owner_email !== env.OWNER_EMAIL.trim().toLowerCase()) fail(401,'Bitte erneut mit Google anmelden.');
   return s;
 }
 function requireCsrf(request: Request, s: Session) {if(request.headers.get('X-Scala-CSRF') !== s.csrf) fail(403,'Sitzungsprüfung fehlgeschlagen. Bitte die Seite neu laden.');}
@@ -116,13 +119,14 @@ async function callback(request: Request, env: Env) {
   if(!exchanged.ok || !validToken(tokens) || typeof tokens.refresh_token !== 'string' || !tokens.refresh_token || !granted(tokens.scope)) fail(400,'Google hat nicht alle benötigten Berechtigungen bestätigt. Bitte die Anmeldung erneut starten und alle benötigten Zugriffe freigeben.');
   const identityResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tokens.access_token},redirect:'error'});
   const identity = await identityResponse.json() as any;
-  const email = env.OWNER_EMAIL.trim().toLowerCase();
-  if(!identityResponse.ok || identity.email_verified !== true || typeof identity.sub !== 'string' || identity.email?.toLowerCase() !== email) fail(403,'Zugriff nur mit dem eingerichteten Eigentümerkonto möglich.');
+  const email = typeof identity.email==='string'?identity.email.trim().toLowerCase():'';
+  if(!identityResponse.ok || identity.email_verified !== true || typeof identity.sub !== 'string' || !identity.sub || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !multiUser(env)&&email!==env.OWNER_EMAIL.trim().toLowerCase()) fail(403,'Zugriff mit diesem Google-Konto nicht möglich.');
   const raw = random(), until = Date.now()+(pending.remember ? 30*DAY : DAY/2);
   const encrypted = await seal(env,{access:tokens.access_token,refresh:tokens.refresh_token,expires:Date.now()+Number(tokens.expires_in)*1000},'tokens:'+identity.sub);
   await env.DB.batch([
     env.DB.prepare('INSERT INTO credentials (owner_sub,owner_email,tokens) VALUES (?,?,?) ON CONFLICT(owner_sub) DO UPDATE SET owner_email=excluded.owner_email, tokens=excluded.tokens').bind(identity.sub,email,encrypted),
-    env.DB.prepare('INSERT INTO sessions (session_hash,owner_sub,csrf,expires_at) VALUES (?,?,?,?)').bind(await hash(raw),identity.sub,random(),until)
+    env.DB.prepare('INSERT INTO sessions (session_hash,owner_sub,csrf,expires_at) VALUES (?,?,?,?)').bind(await hash(raw),identity.sub,random(),until),
+    env.DB.prepare('INSERT INTO account_jobs (owner_sub,next_run) VALUES (?,?) ON CONFLICT(owner_sub) DO NOTHING').bind(identity.sub,nextDailyCheck(Date.now()))
   ]);
   // Replace a prior browser session rather than leaving an unused session alive for 30 days.
   const old = cookie(request,SESSION); if(old) await env.DB.prepare('DELETE FROM sessions WHERE session_hash = ?').bind(await hash(old)).run();
@@ -153,19 +157,20 @@ export function scriptBody(body: ReadableStream<Uint8Array> | null, action: stri
 }
 async function handle(request: Request, env: Env) {
   const url = new URL(request.url);
-  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Scala Anmeldung',version:1});
+  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:2});
   if(!configured(env)) fail(503,'Anmeldedienst ist noch nicht vollständig eingerichtet.');
   if(url.origin !== env.AUTH_ORIGIN) fail(403,'Bitte die eingerichtete Anmeldeadresse verwenden.');
   if(request.method === 'OPTIONS') {
     requireOrigin(request,env);
-    if(!['/session','/logout'].includes(url.pathname) && !url.pathname.startsWith('/api/')) fail(404,'Unbekannter Aufruf.');
+    if(!['/session','/logout','/automation'].includes(url.pathname) && !url.pathname.startsWith('/api/')) fail(404,'Unbekannter Aufruf.');
     const h = headers(request,env); h.set('Access-Control-Allow-Methods','GET, POST'); h.set('Access-Control-Allow-Headers','Content-Type, X-Scala-CSRF'); return new Response(null,{status:204,headers:h});
   }
   if(url.pathname === '/login' && request.method === 'GET') return login(request,env);
   if(url.pathname === '/callback' && request.method === 'GET') return callback(request,env);
   if(url.pathname === '/complete' && request.method === 'GET') return complete(request,env);
   requireOrigin(request,env);
-  if(url.pathname === '/session' && request.method === 'GET') {const s = await session(request,env); return json(request,env,{signedIn:true,csrf:s.csrf,expiresAt:s.expires_at});}
+  if(url.pathname === '/session' && request.method === 'GET') {const s = await session(request,env); return json(request,env,{signedIn:true,csrf:s.csrf,expiresAt:s.expires_at,email:s.owner_email,accountId:s.owner_sub});}
+  if(url.pathname === '/automation' && request.method === 'GET') {const s=await session(request,env);const job=await env.DB.prepare('SELECT next_run,last_run,last_error FROM account_jobs WHERE owner_sub=?').bind(s.owner_sub).first();return json(request,env,job??{next_run:null,last_run:null,last_error:'Tagesprüfung noch nicht eingerichtet.'});}
   if(url.pathname === '/logout' && request.method === 'POST') {
     const s = await session(request,env); requireCsrf(request,s);
     await env.DB.prepare('DELETE FROM sessions WHERE session_hash = ?').bind(await hash(cookie(request,SESSION))).run();
@@ -197,3 +202,38 @@ export default {async fetch(request: Request, env: Env) {
     return response;
   }
 }};
+
+export function nextDailyCheck(at:number){
+ const dateFormat=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin'});
+ const hourFormat=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Berlin',hour:'2-digit',hourCycle:'h23'});
+ for(let day=0;day<3;day++){
+  const date=day===0?dateFormat.format(at):new Date(Date.parse(dateFormat.format(at)+'T12:00:00Z')+day*DAY).toISOString().slice(0,10);
+  let candidate=Date.parse(date+'T06:00:00Z');if(hourFormat.format(candidate)!=='08')candidate+=3600000;
+  if(candidate>at)return candidate;
+ }
+ throw Error('Nächster Prüftermin konnte nicht bestimmt werden.');
+}
+
+// Invoked only by the separate Cron Worker's scheduled event, never by an HTTP route.
+// One account per tick keeps work small and lets each caller's Google identity own
+// the files and MailApp execution. Lease expiry permits recovery after worker aborts.
+export async function runScheduled(env:Env){
+ if(!configured(env))throw Error('Anmeldedienst ist nicht eingerichtet.');
+ const at=Date.now();
+ const claimed=await env.DB.prepare('UPDATE account_jobs SET lease_until=? WHERE owner_sub=(SELECT j.owner_sub FROM account_jobs j JOIN credentials c ON c.owner_sub=j.owner_sub WHERE j.next_run<=? AND j.lease_until<=? ORDER BY j.next_run LIMIT 1) AND lease_until<=? RETURNING owner_sub').bind(at+9*60000,at,at,at).first<{owner_sub:string}>();
+ if(!claimed)return {processed:0};
+ try{
+  const credentials=await env.DB.prepare('SELECT owner_sub,owner_email,tokens FROM credentials WHERE owner_sub=?').bind(claimed.owner_sub).first<Session>();
+  if(!credentials||!multiUser(env)&&credentials.owner_email!==env.OWNER_EMAIL.trim().toLowerCase())fail(401,'Kontofreigabe nicht verfügbar.');
+  const token=await accessToken(env,credentials);
+  const response=await fetch('https://script.googleapis.com/v1/scripts/'+encodeURIComponent(env.GOOGLE_DEPLOYMENT_ID)+':run',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({function:'scalaApi',parameters:['daily',{}],devMode:false}),redirect:'error'});
+  const result=await response.json() as any;
+  if(!response.ok||result.done!==true||result.error||result.response?.result?.ok!==true)fail(502,'Tägliche Prüfung nicht bestätigt.');
+  await env.DB.prepare('UPDATE account_jobs SET next_run=?,lease_until=0,last_run=?,last_error=NULL WHERE owner_sub=?').bind(nextDailyCheck(Date.now()),Date.now(),claimed.owner_sub).run();
+  return {processed:1,ok:true};
+ }catch(error){
+  const revoked=error instanceof HttpError&&error.status===401;
+  await env.DB.prepare('UPDATE account_jobs SET next_run=?,lease_until=0,last_error=? WHERE owner_sub=?').bind(Date.now()+(revoked?DAY:3600000),revoked?'Google-Freigabe erneuern.':'Tägliche Prüfung fehlgeschlagen; erneuter Versuch vorgesehen.',claimed.owner_sub).run();
+  return {processed:1,ok:false};
+ }
+}

@@ -63,3 +63,7 @@ Manuelles Ändern der Sheets ist kein paralleler Standardworkflow. Header-, Date
 Frontend-Routen verwenden Hashes und funktionieren damit bei GitHub Pages auch nach Neuladen. Nur App-Assets und öffentliche Google-Verbindungs-IDs werden veröffentlicht. Browser-Tokens bleiben ausschließlich im Speicher. Private Dokumente werden nicht durch Service Worker gecacht. Der ausdrücklich gewählte Testmodus hat einen getrennten IndexedDB-Namensraum und sendet nichts an Google.
 
 Apps Script prüft aktive und effektive Eigentümeridentität und private konfigurierte Ressourcen. Fehlende Identität, fremder Eigentümer, Freigaben, veränderte Originaldateien oder Integritätsabweichungen führen zu Fehlern. Ein Backup auf demselben Konto ist kein Schutz gegen Kontoverlust.
+
+## Getrennte Konten
+
+Eine Speicherversion-1-Akte gehört genau einem Google-Konto und enthält derzeit ein Fahrzeug. Neue Akten beginnen mit einer reservierten leeren Fahrzeugzeile, die erst nach ausdrücklicher Eingabe als Fahrzeug angezeigt wird. Beim Mehrkontomodus entstehen separate Tabellen und Drive-Ordner je ausführendem Google-Nutzer. Ressourcen-, Restore- und Statuszuordnung liegen in Google UserProperties. Nur das ursprüngliche Eigentümerkonto verwendet weiterhin seine bisherigen global konfigurierten Ressourcen. Übergebene Nutzer-/Ressourcenkennungen wechseln niemals den Kontokontext. Cloudflare ordnet Sitzungen, verschlüsselte Google-Tokens und Tagesprüfjobs nach verifizierter Google-sub zu; keine Fahrzeugdatenbank in D1.

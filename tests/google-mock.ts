@@ -13,8 +13,9 @@ class MockBook{
 const iterator=(a:any[])=>{let i=0;return {hasNext:()=>i<a.length,next:()=>a[i++]};};
 class MockFile{
  id='file-'+(++serial);trashed=false;created=new Date();
+ owner=(globalThis as any).Session?.getEffectiveUser().getEmail()??'owner@example.invalid';
  constructor(public name:string,public bytes:number[]=[],public mime='application/octet-stream',public parent=''){}
- getId(){return this.id;}getName(){return this.name;}getOwner(){return {getEmail:()=> 'owner@example.invalid'};}getSharingAccess(){return 'PRIVATE';}getEditors(){return [];}getViewers(){return [];}getBlob(){return {getBytes:()=>this.bytes};}getDateCreated(){return this.created;}getParents(){return iterator([{getId:()=>this.parent}]);}setTrashed(v:boolean){this.trashed=v;}makeCopy(name:string,folder:MockFolder){return folder.createFile({name,bytes:this.bytes,mime:this.mime});}
+ getId(){return this.id;}getName(){return this.name;}getOwner(){return {getEmail:()=>this.owner};}getSharingAccess(){return 'PRIVATE';}getEditors(){return [];}getViewers(){return [];}getBlob(){return {getBytes:()=>this.bytes};}getDateCreated(){return this.created;}getParents(){return iterator([{getId:()=>this.parent}]);}setTrashed(v:boolean){this.trashed=v;}makeCopy(name:string,folder:MockFolder){return folder.createFile({name,bytes:this.bytes,mime:this.mime});}
 }
 class MockFolder extends MockFile{
  files:MockFile[]=[];folders:MockFolder[]=[];
@@ -22,9 +23,11 @@ class MockFolder extends MockFile{
 }
 export function setupGoogleMock(){
  const properties:Record<string,string>={OWNER_EMAIL:'owner@example.invalid',REMINDER_EMAIL:'owner@example.invalid',APP_ORIGIN:'https://vehicle.example.invalid'},books=new Map<string,MockBook>(),files=new Map<string,MockFile>();
- const context={active:'owner@example.invalid',effective:'owner@example.invalid',failBatch:false,failMail:false,quota:100,triggers:[] as any[],mail:[] as any[],batches:[] as any[],books,files,properties};
+ const userProperties=new Map<string,Record<string,string>>();
+ const context={active:'owner@example.invalid',effective:'owner@example.invalid',failBatch:false,failMail:false,quota:100,triggers:[] as any[],mail:[] as any[],batches:[] as any[],books,files,properties,userProperties};
  vi.stubGlobal('Session',{getActiveUser:()=>({getEmail:()=>context.active}),getEffectiveUser:()=>({getEmail:()=>context.effective})});
- vi.stubGlobal('PropertiesService',{getScriptProperties:()=>({getProperty:(k:string)=>properties[k]??null,setProperty:(k:string,v:string)=>properties[k]=v,setProperties:(p:object)=>Object.assign(properties,p),deleteProperty:(k:string)=>delete properties[k]})});
+ const propertyStore=(values:Record<string,string>)=>({getProperty:(k:string)=>values[k]??null,setProperty:(k:string,v:string)=>values[k]=v,setProperties:(p:object)=>Object.assign(values,p),deleteProperty:(k:string)=>delete values[k]});
+ vi.stubGlobal('PropertiesService',{getScriptProperties:()=>propertyStore(properties),getUserProperties:()=>{if(!userProperties.has(context.effective))userProperties.set(context.effective,{});return propertyStore(userProperties.get(context.effective)!);}});
  vi.stubGlobal('DriveApp',{Access:{PRIVATE:'PRIVATE'},createFolder:(n:string)=>new MockFolder(n,files),getFileById:(id:string)=>files.get(id),getFolderById:(id:string)=>files.get(id)});
  vi.stubGlobal('SpreadsheetApp',{create:()=>{const book=new MockBook();books.set(book.id,book);const file=new MockFile('book');file.id=book.id;files.set(book.id,file);return book;},openById:(id:string)=>books.get(id)});
  vi.stubGlobal('Sheets',{Spreadsheets:{get:(id:string)=>({sheets:books.get(id)!.sheets.map(sheet=>({properties:{title:sheet.name},data:[{rowData:sheet.rows.map((row,r)=>({values:row.map((value,c)=>({userEnteredValue:sheet.formulas[r]?.[c]?{formulaValue:sheet.formulas[r][c]}:typeof value==='number'?{numberValue:value}:typeof value==='boolean'?{boolValue:value}:{stringValue:value??''}}))}))}]}))}),batchUpdate:(payload:any,id:string)=>{context.batches.push(payload);if(context.failBatch)throw Error('Simulierter atomarer Commit-Fehler');const book=books.get(id)!;for(const r of payload.requests){if(r.appendDimension){book.sheets.find(s=>s.id===r.appendDimension.sheetId)!.maxRows+=r.appendDimension.length;continue;}const u=r.updateCells,sheet=book.sheets.find(s=>s.id===u.range.sheetId)!;sheet.rows=u.rows.map((r:any)=>r.values.map((v:any)=>v.userEnteredValue.numberValue??v.userEnteredValue.boolValue??v.userEnteredValue.stringValue));}}}});

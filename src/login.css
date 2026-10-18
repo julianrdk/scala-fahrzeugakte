@@ -2,4 +2,6 @@
 .login-card{width:100%;max-width:450px;padding:32px;background:#fff;border:1px solid #e1e7df;border-radius:14px}
 .login-card .brand-mark{margin-bottom:26px}.login-card h1{margin-top:10px}.login-card .button{width:100%}
 .login-card .check{margin-top:24px}.login-card>p{font-size:14px}.login-card details{margin-bottom:0}
+.login-card h1{font-size:28px}.login-card>form+.button{margin-top:12px}.sidebar .brand{font-size:18px;letter-spacing:-.3px}.brand-mark{flex-shrink:0}
+.vehicle-hero>div:first-child{min-width:0;flex:1}.vehicle-hero h2{overflow-wrap:anywhere}.topbar>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}.top-actions{flex-shrink:0}
 @media(max-width:480px){.login-screen{padding:16px}.login-card{padding:24px}}

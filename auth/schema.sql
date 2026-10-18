@@ -19,3 +19,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS session_expiry ON sessions(expires_at);
+CREATE TABLE IF NOT EXISTS account_jobs (
+  owner_sub TEXT PRIMARY KEY,
+  next_run INTEGER NOT NULL,
+  lease_until INTEGER NOT NULL DEFAULT 0,
+  last_run INTEGER,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS job_due ON account_jobs(next_run, lease_until);
