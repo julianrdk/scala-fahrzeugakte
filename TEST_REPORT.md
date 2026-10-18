@@ -30,7 +30,9 @@ Vollständige lokale Prüfung nach der Cache-Korrektur: **76 Tests in 5 Dateien*
 
 Der Nutzer konnte sich verbinden; erst der Lese-/Schreibtest meldete eine direkte Tabellenänderung. Er bestätigte, keine Tabellenzellen geändert zu haben. Der bisherige Code kombinierte Advanced-Sheets-API-Schreibvorgänge mit SpreadsheetApp-Lesevorgängen. Ein Test mit zwischengespeicherten SpreadsheetApp-Werten reproduziert exakt die Fehlermeldung beim Rücklesen des frisch geschriebenen Prüfeintrags. Ein zweiter Regressionstest zeigt, dass derselbe alte Cache echte Änderungen verdecken konnte.
 
-Die Korrektur liest alle Datenblätter und `_Integrity` gemeinsam per `Sheets.Spreadsheets.get` und verwendet die rohen `userEnteredValue`-Felder. Die Prüfsummenberechnung und das Speicherformat bleiben gleich. Es gibt keine neue Prüfsumme für ungeprüfte Daten, keine automatische Freischaltung und keinen Datenreset. Beide Regressionstests sowie ein zusätzlicher Formeltest bestehen; auch alle bisherigen Tests bestehen. **Der korrigierte Code muss noch im bestehenden Apps-Script-Deployment als neue Version übernommen und im echten Konto erneut geprüft werden.** Ein erfolgreicher lokaler Test ersetzt diese Bestätigung nicht.
+Die Korrektur liest alle Datenblätter und `_Integrity` gemeinsam per `Sheets.Spreadsheets.get` und verwendet die rohen `userEnteredValue`-Felder. Die Prüfsummenberechnung und das Speicherformat bleiben gleich. Es gibt keine neue Prüfsumme für ungeprüfte Daten, keine automatische Freischaltung und keinen Datenreset. Beide Regressionstests sowie ein zusätzlicher Formeltest bestehen; auch alle bisherigen Tests bestehen.
+
+Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose **Leser: neue Korrektur** und **Lesetest: OK**. Der Nutzer bestätigte nach der anschließenden Schreib-/Versionsprüfung ausdrücklich, dass der **Lese-/Schreibtest auch auf der Website erfolgreich** war. Dies ist ein echter Test im Eigentümerkonto nach dessen Rückmeldung. Originalupload/-download, Fremdkonto-Test, tatsächliche Mailzustellung sowie realer Export/Restore sind damit noch nicht nachgewiesen.
 
 ## Browserprüfung
 

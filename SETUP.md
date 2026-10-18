@@ -131,11 +131,11 @@ Tankpreise funktionieren zunächst über einen frei wählbaren HTTPS-Link. Kein 
 
 ## Nachweisblatt für die Kontoeinrichtung
 
-- [ ] Repository-URL und eigene Domain bestätigt
-- [ ] DNS und HTTPS aktiv
+- [x] Repository-URL und eigene Domain bestätigt
+- [x] DNS und HTTPS aktiv
 - [ ] Gemeinsames Cloud-Projekt und vollständige Scopes geprüft
 - [ ] Leere private Ressourcen initialisiert; MYSELF-Deployment aktiv
-- [ ] Echter Lese-/Schreibdurchstich auf eigener Domain erfolgreich
+- [x] Echter Lese-/Schreibdurchstich auf eigener Domain erfolgreich (vom Nutzer am 18.10.2026 bestätigt)
 - [ ] Fremdes Konto abgewiesen
 - [ ] Originalupload/-download, Retry und Konflikt geprüft
 - [ ] Export und Restore auf realem Google-Konto geprüft
