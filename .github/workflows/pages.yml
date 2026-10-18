@@ -27,6 +27,7 @@ jobs:
           PAGES_DOMAIN: ${{ vars.PAGES_DOMAIN }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GOOGLE_DEPLOYMENT_ID: ${{ vars.GOOGLE_DEPLOYMENT_ID }}
+          AUTH_ORIGIN: ${{ vars.AUTH_ORIGIN }}
       - run: pnpm check
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -51,6 +52,7 @@ jobs:
           PAGES_DOMAIN: ${{ vars.PAGES_DOMAIN }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GOOGLE_DEPLOYMENT_ID: ${{ vars.GOOGLE_DEPLOYMENT_ID }}
+          AUTH_ORIGIN: ${{ vars.AUTH_ORIGIN }}
       - run: node scripts/validate-release.mjs
       - name: Auf GitHub Pages bereitstellen
         id: deployment

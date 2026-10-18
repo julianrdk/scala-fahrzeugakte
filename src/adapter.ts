@@ -1,8 +1,10 @@
 import {emptyState,clone,meta,commitImport,editEntity,completeReminder,hashBytes,assertFile,verifySignature,validateState,fail} from '../shared/logic';
 import type {State,UploadFile} from '../shared/types';
-export type Config={clientId:string;deploymentId:string;origin:string};
+export type Config={clientId:string;deploymentId:string;origin:string;authOrigin?:string};
 export interface Adapter{kind:'google'|'test';call<T=any>(action:string,arg?:any):Promise<T>;}
-export const scopes=['userinfo.email','spreadsheets','drive','script.send_mail','script.scriptapp'].map(x=>'https://www.googleapis.com/auth/'+x);
+import {scopes} from '../shared/google-scopes';
+export {scopes};
+export class SignInRequired extends Error {}
 declare global{interface Window{google:any;}}
 export class GoogleAdapter implements Adapter{
  kind='google' as const;private token='';private expires=0;
@@ -11,11 +13,47 @@ export class GoogleAdapter implements Adapter{
  async loadLibrary(){if(window.google?.accounts?.oauth2)return;await new Promise<void>((resolve,reject)=>{const script=document.createElement('script');script.src='https://accounts.google.com/gsi/client';script.async=true;script.onload=()=>resolve();script.onerror=()=>reject(Error('Google-Anmeldung konnte nicht geladen werden. Internetverbindung prüfen.'));document.head.append(script);});}
  authorize(){if(!this.ready())return Promise.reject(Error('Einrichtung fehlt: eigene HTTPS-Domain, Google-Client-ID und API-Deployment-ID in config.json einsetzen.'));return new Promise<void>((resolve,reject)=>{if(!window.google?.accounts?.oauth2)return reject(Error('Anmeldebibliothek wird noch geladen. Bitte gleich erneut klicken.'));window.google.accounts.oauth2.initTokenClient({client_id:this.config.clientId,scope:scopes.join(' '),include_granted_scopes:false,error_callback:()=>reject(Error('Google-Anmeldung wurde geschlossen oder blockiert. Deine Eingaben bleiben erhalten.')),callback:(response:any)=>{if(response.error||!window.google.accounts.oauth2.hasGrantedAllScopes(response,...scopes))return reject(Error('Nicht alle benötigten Berechtigungen wurden erteilt.'));this.token=response.access_token;this.expires=Date.now()+Number(response.expires_in)*1000;resolve();}}).requestAccessToken({prompt:'select_account'});});}
  disconnect(){this.token='';this.expires=0;}
- async call<T=any>(action:string,arg:any={}):Promise<T>{if(!this.token||Date.now()>this.expires-360000){this.disconnect();throw Error('Bitte mit Google erneut verbinden. Die Anmeldung ist abgelaufen oder läuft bald ab. Deine Eingaben bleiben erhalten.');}
+ async call<T=any>(action:string,arg:any={}):Promise<T>{if(!this.token||Date.now()>this.expires-360000){this.disconnect();throw new SignInRequired('Bitte mit Google erneut verbinden. Die Anmeldung ist abgelaufen oder läuft bald ab. Deine Eingaben bleiben erhalten.');}
   let response:Response;try{response=await fetch(`https://script.googleapis.com/v1/scripts/${encodeURIComponent(this.config.deploymentId)}:run`,{method:'POST',headers:{Authorization:'Bearer '+this.token,'Content-Type':'application/json'},body:JSON.stringify({function:'scalaApi',parameters:[action,arg],devMode:false}),cache:'no-store',referrerPolicy:'no-referrer'});}catch{throw Error('Keine Serverbestätigung erhalten. Verbindung prüfen und denselben Speichervorgang wiederholen.');}
-  const result=await response.json();if(response.status===401){this.disconnect();throw Error('Anmeldung abgelaufen. Bitte erneut verbinden; danach denselben Vorgang wiederholen.');}if(!response.ok||result.error)throw Error(result.error?.details?.[0]?.errorMessage??result.error?.message??'Google-Anfrage fehlgeschlagen.');if(result.done!==true||!result.response||!('result' in result.response))throw Error('Keine vollständige Serverbestätigung. Denselben Vorgang erneut versuchen.');return result.response.result;
+  return scriptResult(response,()=>this.disconnect());
  }
 }
+async function scriptResult<T=any>(response:Response,onExpired:()=>void=()=>{}):Promise<T>{
+ const result=await response.json();if(response.status===401){onExpired();throw new SignInRequired('Anmeldung abgelaufen. Bitte erneut anmelden; danach denselben Vorgang wiederholen.');}
+ if(!response.ok||result.error)throw Error(typeof result.error==='string'?result.error:result.error?.details?.[0]?.errorMessage??result.error?.message??'Google-Anfrage fehlgeschlagen.');
+ if(result.done!==true||!result.response||!('result' in result.response))throw Error('Keine vollständige Serverbestätigung. Denselben Vorgang erneut versuchen.');return result.response.result;
+}
+export class SessionAdapter implements Adapter{
+ kind='google' as const;private csrf='';
+ constructor(public config:Config){}
+ ready(){try{return !!this.config.authOrigin&&new URL(this.config.authOrigin).origin===this.config.authOrigin&&this.config.authOrigin.startsWith('https://')&&this.config.origin===location.origin&&location.protocol==='https:';}catch{return false;}}
+ async loadLibrary(){}
+ private async request(path:string,init:RequestInit={}){if(!this.ready())throw Error('Die dauerhafte Anmeldung ist noch nicht eingerichtet.');try{return await fetch(this.config.authOrigin+path,{...init,credentials:'include',cache:'no-store',referrerPolicy:'no-referrer'});}catch{throw Error('Anmeldedienst nicht erreichbar. Keine Serverbestätigung erhalten. Verbindung prüfen und denselben Vorgang wiederholen.');}}
+ async restore(){const response=await this.request('/session');if(response.status===401){this.csrf='';return false;}const result=await response.json();if(!response.ok||result.signedIn!==true||typeof result.csrf!=='string')throw Error('Dauerhafte Anmeldung konnte nicht geprüft werden. Bitte später erneut versuchen.');this.csrf=result.csrf;return true;}
+ async authorize(remember=true){
+  if(!this.ready())throw Error('Die dauerhafte Anmeldung ist noch nicht eingerichtet.');
+  const popup=window.open(this.config.authOrigin+'/login?remember='+(remember?'1':'0'),'scala-google-login','popup,width=520,height=700');
+  if(!popup)throw Error('Bitte das Anmeldefenster für diese Website zulassen und erneut anmelden.');
+  await new Promise<void>((resolve,reject)=>{
+   let finished=false;
+   const finish=(error?:Error)=>{if(finished)return;finished=true;removeEventListener('message',message);clearInterval(poll);clearTimeout(timeout);if(error)reject(error);else resolve();};
+   const message=(event:MessageEvent)=>{if(event.origin===this.config.authOrigin&&event.source===popup&&event.data?.type==='scala-session-ready')finish();};
+   addEventListener('message',message);
+   // A close can race postMessage delivery. Check the server instead of assuming success.
+   const poll=setInterval(()=>{if(popup.closed)finish();},500);
+   const timeout=setTimeout(()=>finish(Error('Anmeldung dauert zu lange. Bitte das Anmeldefenster schließen und erneut versuchen.')),600000);
+  });
+  if(!await this.restore())throw Error('Google-Anmeldung wurde nicht bestätigt. Bitte erneut anmelden. Deine Eingaben bleiben erhalten.');
+ }
+ async disconnect(){if(!this.csrf&&!await this.restore())return;const response=await this.request('/logout',{method:'POST',headers:{'X-Scala-CSRF':this.csrf}});if(!response.ok&&response.status!==401)throw Error('Abmeldung wurde nicht bestätigt. Bitte erneut versuchen.');this.csrf='';}
+ async call<T=any>(action:string,arg:any={}):Promise<T>{
+  if(!this.csrf)throw new SignInRequired('Bitte erneut mit Google anmelden. Deine Eingaben bleiben erhalten.');
+  const response=await this.request('/api/'+encodeURIComponent(action),{method:'POST',headers:{'Content-Type':'application/json','X-Scala-CSRF':this.csrf},body:JSON.stringify(arg)});
+  return scriptResult<T>(response,()=>{this.csrf='';});
+ }
+}
+export type GoogleConnection=GoogleAdapter|SessionAdapter;
+export function googleConnection(config:Config):GoogleConnection{return config.authOrigin?new SessionAdapter(config):new GoogleAdapter(config);}
 const DB_NAME='scala-explicit-test-v1';
 function db(){return new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>r.result.createObjectStore('store');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
 async function readDB(key:string){const d=await db();try{return await new Promise<any>((resolve,reject)=>{const r=d.transaction('store').objectStore('store').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}finally{d.close();}}

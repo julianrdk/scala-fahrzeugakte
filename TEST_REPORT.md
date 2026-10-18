@@ -4,7 +4,7 @@ Prüfstand der lokalen Abnahme: 18. Oktober 2026, Europe/Berlin. Lokale Umsetzun
 
 ## Automatisierte Prüfungen
 
-Vollständige lokale Prüfung nach der Cache-Korrektur: **76 Tests in 5 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild und Apps-Script-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Veröffentlichungsartefakte enthalten nur Frontend und öffentliche Konfiguration.
+Vollständige lokale Prüfung nach dem optionalen Cloudflare-Anmeldeumbau: **105 Tests in 7 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut.
 
 `pnpm audit --json`: nach Aktualisierung der Pakete **0 gemeldete Schwachstellen**. Dies ist der Stand der abgefragten Registry, keine Garantie für künftige Meldungen. Exakte Versionen und Integritätshashes im Lockfile.
 
@@ -20,6 +20,8 @@ Vollständige lokale Prüfung nach der Cache-Korrektur: **76 Tests in 5 Dateien*
 | Termine | Datum ODER Kilometer, Vorlauf, Monatsende/Schaltjahr, tatsächliche Erledigung, idempotente Erledigung, feste Kalenderregel |
 | Verbrauch | Teilbetankungen im vollständigen Intervall; keine Berechnung über eine bekannte Lücke |
 | GIS-/REST-Adapter | Deployment-ID, offizieller Endpunkt, Header statt Token-URL, vollständige Scopes, Ablauf und fremde Origin, kein Erfolg bei done:false |
+| Cloudflare-Sitzungen (lokal) | Echtes SQLite-Schema, einmaliger browsergebundener State/PKCE, ausschließlich verifiziertes Eigentümerkonto, AES-GCM-Tokens, gehashte Cookies, 30 Tage/12 Stunden, Logout und Ablauf, Origin/CSRF, widerrufene Freigaben, serverseitiges Refresh vor sechs Minuten Restlaufzeit |
+| Sitzungsadapter/Weiterleitung | Neue Adapterinstanz stellt Sitzung ohne OAuth her, nur festes Popup akzeptiert, kein Google-Bearer im Browser, kein automatisches Wiederholen von Schreibzugriffen, fester scripts.run-Umschlag, Unicode/JSON-Ausbruch/Größenlimit/ungültiges UTF-8, Stringargument im Google-Backend validiert |
 | Google-Backend (simuliert) | Eigentümer/fehlende Identität, idempotentes Setup, benannte Spalten/stringValue, Integrität, atomarer Batch-Fehler, Uploadabbruch/Dateiwiederverwendung |
 | Automation (simuliert) | Ein Editortrigger, globale/regelförmige Aktivierung, Bündelung, Versandwiederholung unterdrückt, unklarer Ausgang, Kontingentfehler und ausdrückliche Testmail |
 | Wiederherstellung | Tatsächlicher ZIP/CSV-Rundlauf und simulierte neue Google-Ressourcen; neue Drive-IDs, gleiche Originalbytes, Hashes, Beträge und Links; fehlende Teile abgewiesen |
@@ -32,9 +34,13 @@ Der Nutzer konnte sich verbinden; erst der Lese-/Schreibtest meldete eine direkt
 
 Die Korrektur liest alle Datenblätter und `_Integrity` gemeinsam per `Sheets.Spreadsheets.get` und verwendet die rohen `userEnteredValue`-Felder. Die Prüfsummenberechnung und das Speicherformat bleiben gleich. Es gibt keine neue Prüfsumme für ungeprüfte Daten, keine automatische Freischaltung und keinen Datenreset. Beide Regressionstests sowie ein zusätzlicher Formeltest bestehen; auch alle bisherigen Tests bestehen.
 
-Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose **Leser: neue Korrektur** und **Lesetest: OK**. Der Nutzer bestätigte nach der anschließenden Schreib-/Versionsprüfung ausdrücklich, dass der **Lese-/Schreibtest auch auf der Website erfolgreich** war. Dies ist ein echter Test im Eigentümerkonto nach dessen Rückmeldung. Anschließend bestätigte er den Eingang der ausdrücklich ausgelösten Testmail. Originalupload/-download, Fremdkonto-Test, automatischer Triggerlauf sowie realer Export/Restore sind damit noch nicht nachgewiesen. Das neue Einrichtungspaket `examples/einrichtungstest/Belegtest.json` ist gegen das verbindliche Schema geprüft und enthält nur ein Beispieldokument, keine Ausgaben, Arbeiten oder Regeln.
+Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose **Leser: neue Korrektur** und **Lesetest: OK**. Der Nutzer bestätigte ausdrücklich den **Lese-/Schreibtest auch auf der Website**, den Eingang der ausdrücklich ausgelösten Testmail sowie Upload/Öffnen/Download des Beispieldokuments. Fremdkonto-Test, automatischer Triggerlauf sowie realer Export/Restore sind damit noch nicht nachgewiesen. Das Einrichtungspaket `examples/einrichtungstest/Belegtest.json` ist gegen das verbindliche Schema geprüft und enthält nur ein Beispieldokument, keine Ausgaben, Arbeiten oder Regeln.
+
+Die neue Cloudflare-Anmeldung ist noch nicht eingerichtet. Die SQLite-/Google-Mocks beweisen keinen echten Cloudflare-/Google-Codeaustausch, Cookieverhalten eines realen Browsers, erfolgreiche Produktionseinstellung oder Einhaltung des Free-CPU-Limits mit 4-MiB-Originalen. Vor Aktivierung/Abnahme gemäß `docs/CLOUDFLARE_ANMELDUNG.md` prüfen. Die öffentliche Konfiguration bleibt bis dahin beim bisherigen Modell.
 
 ## Browserprüfung
+
+Die neue vorgeschaltete Anmeldeansicht wurde lokal bei **360 × 800** geprüft: `scrollWidth = clientWidth = 360`, Merkfunktion/Erklärung lesbar, Testmodus erreichbar, Abmelden führt wieder zur Anmeldeansicht. Nachweis: [Anmeldeseite, lokal vorbereitet](docs/screenshots/anmeldung-mobil-vorbereitet.png), [Abmeldung der lokalen Testakte](docs/screenshots/anmeldung-abgemeldet-lokaler-test.png). Der Google-Button ist auf dieser HTTP-Layoutvorschau absichtlich deaktiviert; kein echter Google-/Cloudflare-Login wurde damit geprüft. Produktive Konfiguration wurde für die Vorschau nicht verändert.
 
 Im lokalen In-App-Browser mit ausdrücklich aktiviertem Testmodus:
 

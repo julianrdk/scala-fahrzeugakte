@@ -56,7 +56,7 @@ function uploadInto(s:State,folderId:string,operationId:string,f:UploadFile){con
 }
 function readDocument(s:State,id:string){const d=s.Documents.find(d=>d.id===id&&!d.missing)??fail('Originaldatei fehlt.');const resource=privateResource(DriveApp.getFileById(d.drive_id));const allowed=props().getProperty('DOCUMENT_FOLDER_ID');const parents=resource.getParents();let valid=false;while(parents.hasNext())if(parents.next().getId()===allowed)valid=true;if(!valid)fail('Dokument liegt außerhalb des Originalordners.');const bytes=resource.getBlob().getBytes();if(bytes.length!==d.size||hashBytes(Uint8Array.from(bytes,(x:number)=>x&255))!==d.sha256)fail('Originaldatei wurde verändert.');return {base64:Utilities.base64Encode(bytes),mime:d.mime,source_filename:d.source_filename??d.title};}
 function restoreProps(id:string){if(!/^[a-f0-9]{64}$/.test(id))fail('Ungültiger Wiederherstellungsvorgang.');const p=props();const target=JSON.parse(p.getProperty('RESTORE_'+id)??'null')??fail('Wiederherstellung fehlt.');privateResource(DriveApp.getFileById(target.sheet));privateResource(DriveApp.getFolderById(target.folder));return target as {sheet:string;folder:string};}
-export function dispatch(action:string,arg:any={}):any{guard();if(JSON.stringify(arg).length>7*1024*1024)fail('Anfrage zu groß.');const r=resources();
+export function dispatch(action:string,arg:any={}):any{guard();if(typeof arg==='string'){if(arg.length>7*1024*1024)fail('Anfrage zu groß.');try{arg=JSON.parse(arg);}catch{fail('Ungültige Anfrage.');}}if(!arg||typeof arg!=='object'||Array.isArray(arg))fail('Ungültige Anfrage.');if(JSON.stringify(arg).length>7*1024*1024)fail('Anfrage zu groß.');const r=resources();
  return locked(()=>{
  const s=readState(r.sheet);
  switch(action){

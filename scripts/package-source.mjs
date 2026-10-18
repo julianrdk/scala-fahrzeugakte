@@ -2,7 +2,7 @@ import fs from 'node:fs';import path from 'node:path';import {createHash} from '
 const root=process.cwd(),files={};
 function add(relative){const file=path.resolve(root,relative);if(!file.startsWith(root+path.sep))throw Error('Pfad außerhalb des Projekts.');const bytes=fs.readFileSync(file);files[relative.replaceAll('\\','/')]=new Uint8Array(bytes);}
 function walk(relative){for(const entry of fs.readdirSync(path.join(root,relative),{withFileTypes:true})){if(entry.name.startsWith('.')||entry.name.startsWith('private')||entry.name.endsWith('.zip'))continue;const child=path.join(relative,entry.name);entry.isDirectory()?walk(child):add(child);}}
-for(const folder of ['src','shared','apps-script','docs','examples','scripts','tests','dist'])walk(folder);
+for(const folder of ['src','shared','apps-script','auth','docs','examples','scripts','tests','dist'])walk(folder);
 for(const file of ['package.json','pnpm-lock.yaml','pnpm-workspace.yaml','tsconfig.json','vite.config.ts','index.html','.gitignore','README.md','SETUP.md','DATA_MODEL.md','BACKUP_RESTORE.md','TEST_REPORT.md','config/script-properties.example.json','.github/workflows/pages.yml'])add(file);
 walk('public');
 files['SOURCE_MANIFEST.sha256']=strToU8(Object.entries(files).map(([name,b])=>createHash('sha256').update(b).digest('hex')+'  '+name).join('\n')+'\n');

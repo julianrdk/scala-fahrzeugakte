@@ -23,6 +23,7 @@
     "src",
     "shared",
     "apps-script/src",
+    "auth/src",
     "tests",
     "vite.config.ts"
   ]
