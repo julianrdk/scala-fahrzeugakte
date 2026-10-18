@@ -27,7 +27,7 @@ function b64(bytes: Uint8Array) {let raw = ''; for (const b of bytes) raw += Str
 function unb64(raw: string) {return Uint8Array.from(atob(raw.replaceAll('-','+').replaceAll('_','/')), c => c.charCodeAt(0));}
 const random = () => b64(crypto.getRandomValues(new Uint8Array(32)));
 async function hash(raw: string) {return b64(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(raw))));}
-async function key(env: Env) {const bytes = unb64(env.TOKEN_KEY); if(bytes.length !== 32) fail(503,'Anmeldedienst ist noch nicht vollständig eingerichtet.'); return crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['encrypt','decrypt']);}
+async function key(env: Env) {const bytes = unb64(env.TOKEN_KEY.trim()); if(bytes.length !== 32) fail(503,'Anmeldedienst ist noch nicht vollständig eingerichtet.'); return crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['encrypt','decrypt']);}
 async function seal(env: Env, value: unknown, purpose: string) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const data = await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode(purpose)}, await key(env), encoder.encode(JSON.stringify(value)));
@@ -42,8 +42,8 @@ function validOrigin(raw: string) {try {return new URL(raw).origin === raw && ra
 function configured(env: Env) {
   return !!env.DB && validOrigin(env.APP_ORIGIN) && validOrigin(env.AUTH_ORIGIN)
     && env.APP_ORIGIN !== env.AUTH_ORIGIN && env.GOOGLE_CLIENT_ID?.endsWith('.apps.googleusercontent.com')
-    && /^[\w-]{20,}$/.test(env.GOOGLE_DEPLOYMENT_ID ?? '') && !!env.GOOGLE_CLIENT_SECRET
-    && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(env.OWNER_EMAIL ?? '') && /^[\w-]{43}$/.test(env.TOKEN_KEY ?? '');
+    && /^[\w-]{20,}$/.test(env.GOOGLE_DEPLOYMENT_ID ?? '') && !!env.GOOGLE_CLIENT_SECRET?.trim()
+    && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(env.OWNER_EMAIL?.trim() ?? '') && /^[\w-]{43}$/.test(env.TOKEN_KEY?.trim() ?? '');
 }
 function cookie(request: Request, name: string) {
   const values = (request.headers.get('Cookie') ?? '').split(';').map(x => x.trim()).filter(x => x.startsWith(name+'='));
@@ -71,7 +71,7 @@ function requireCsrf(request: Request, s: Session) {if(request.headers.get('X-Sc
 function granted(raw: unknown) {if(typeof raw !== 'string') return false; const got = new Set(raw.split(' ').map(x => x === 'email' ? 'https://www.googleapis.com/auth/userinfo.email' : x)); return scopes.every(x => got.has(x));}
 function validToken(result: any) {return typeof result.access_token === 'string' && result.access_token.length > 0 && Number.isFinite(Number(result.expires_in)) && Number(result.expires_in) > 360;}
 async function tokenRequest(env: Env, fields: Record<string,string>) {
-  return fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET}),redirect:'error'});
+  return fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET.trim()}),redirect:'error'});
 }
 async function accessToken(env: Env, s: Session) {
   const tokens = await open<Tokens>(env,s.tokens,'tokens:'+s.owner_sub);
