@@ -1,0 +1,20 @@
+{
+  "format": "vehicle-record-import",
+  "schema_version": 1,
+  "import_id": "einrichtungstest-dokument-v1",
+  "vehicle_label": null,
+  "documents": [
+    {
+      "ref": "test-original-1",
+      "source_filename": "Belegtest.png",
+      "title": "EINRICHTUNGSTEST – Beispieldokument",
+      "document_type": "invoice"
+    }
+  ],
+  "expenses": [],
+  "work": [],
+  "reminders": [],
+  "warnings": [
+    "Reiner Übertragungstest mit einem Beispieldokument. Es werden keine Ausgaben, Wartungen oder Erinnerungen angelegt."
+  ]
+}

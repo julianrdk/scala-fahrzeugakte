@@ -32,7 +32,7 @@ Der Nutzer konnte sich verbinden; erst der Lese-/Schreibtest meldete eine direkt
 
 Die Korrektur liest alle Datenblätter und `_Integrity` gemeinsam per `Sheets.Spreadsheets.get` und verwendet die rohen `userEnteredValue`-Felder. Die Prüfsummenberechnung und das Speicherformat bleiben gleich. Es gibt keine neue Prüfsumme für ungeprüfte Daten, keine automatische Freischaltung und keinen Datenreset. Beide Regressionstests sowie ein zusätzlicher Formeltest bestehen; auch alle bisherigen Tests bestehen.
 
-Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose **Leser: neue Korrektur** und **Lesetest: OK**. Der Nutzer bestätigte nach der anschließenden Schreib-/Versionsprüfung ausdrücklich, dass der **Lese-/Schreibtest auch auf der Website erfolgreich** war. Dies ist ein echter Test im Eigentümerkonto nach dessen Rückmeldung. Originalupload/-download, Fremdkonto-Test, tatsächliche Mailzustellung sowie realer Export/Restore sind damit noch nicht nachgewiesen.
+Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose **Leser: neue Korrektur** und **Lesetest: OK**. Der Nutzer bestätigte nach der anschließenden Schreib-/Versionsprüfung ausdrücklich, dass der **Lese-/Schreibtest auch auf der Website erfolgreich** war. Dies ist ein echter Test im Eigentümerkonto nach dessen Rückmeldung. Anschließend bestätigte er den Eingang der ausdrücklich ausgelösten Testmail. Originalupload/-download, Fremdkonto-Test, automatischer Triggerlauf sowie realer Export/Restore sind damit noch nicht nachgewiesen. Das neue Einrichtungspaket `examples/einrichtungstest/Belegtest.json` ist gegen das verbindliche Schema geprüft und enthält nur ein Beispieldokument, keine Ausgaben, Arbeiten oder Regeln.
 
 ## Browserprüfung
 

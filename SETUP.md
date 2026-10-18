@@ -139,6 +139,7 @@ Tankpreise funktionieren zunächst über einen frei wählbaren HTTPS-Link. Kein 
 - [ ] Fremdes Konto abgewiesen
 - [ ] Originalupload/-download, Retry und Konflikt geprüft
 - [ ] Export und Restore auf realem Google-Konto geprüft
-- [ ] Trigger und ausdrücklich angeforderte Testmail bestätigt
+- [ ] Täglicher Editortrigger und tatsächlicher Sicherungslauf bestätigt
+- [x] Ausdrücklich angeforderte Testmail im eigenen Postfach eingegangen (vom Nutzer am 18.10.2026 bestätigt)
 
 Kein Häkchen wird durch lokale Tests automatisch ersetzt.
