@@ -25,6 +25,18 @@ const multiUser = (env:Env) => env.ACCOUNT_MODE === 'multi';
 const encoder = new TextEncoder();
 class HttpError extends Error {constructor(public status: number, message: string) {super(message);}}
 function fail(status: number, message: string): never {throw new HttpError(status, message);}
+async function authStage<T>(code: string, action: () => Promise<T>): Promise<T> {
+  try {return await action();} catch(error) {
+    if(error instanceof HttpError) throw error;
+    // Only fixed stage/table names reach the browser. Never expose exception text,
+    // Google responses, authorization codes, tokens, identity or database values.
+    const missing = error instanceof Error ? /no such table:\s*(?:main\.)?([a-z_]+)/i.exec(error.message)?.[1] : undefined;
+    if(missing && ['oauth_requests','credentials','sessions','account_jobs'].includes(missing)) {
+      fail(503,'In der Anmeldedatenbank fehlt die Tabelle '+missing+'. Bitte die vorbereiteten SQL-Befehle vollständig ausführen. Fehlercode: DB_TABELLE_FEHLT.');
+    }
+    fail(503,'Die Anmeldung konnte nicht abgeschlossen werden. Fehlercode: '+code+'. Bitte diesen Fehlercode zur Prüfung mitteilen.');
+  }
+}
 function b64(bytes: Uint8Array) {let raw = ''; for (const b of bytes) raw += String.fromCharCode(b); return btoa(raw).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');}
 function unb64(raw: string) {return Uint8Array.from(atob(raw.replaceAll('-','+').replaceAll('_','/')), c => c.charCodeAt(0));}
 const random = () => b64(crypto.getRandomValues(new Uint8Array(32)));
@@ -95,6 +107,7 @@ async function accessToken(env: Env, s: Session) {
   return next.access;
 }
 async function login(request: Request, env: Env) {
+  return authStage('ANMELDESTART',async()=>{
   const until = Date.now()+600000, state = random(), browser = random(), verifier = random(), stateHash = await hash(state);
   const remember = new URL(request.url).searchParams.get('remember') === '1' ? 1 : 0;
   await env.DB.batch([
@@ -105,31 +118,38 @@ async function login(request: Request, env: Env) {
   const target = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   target.search = new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:env.AUTH_ORIGIN+'/callback',response_type:'code',scope:scopes.join(' '),access_type:'offline',prompt:'consent select_account',state,code_challenge:await hash(verifier),code_challenge_method:'S256'}).toString();
   const response = redirect(request,env,target.href); response.headers.append('Set-Cookie',setCookie(LOGIN,browser,600)); return response;
+  });
 }
 async function callback(request: Request, env: Env) {
   const query = new URL(request.url).searchParams, state = query.get('state') ?? '', browser = cookie(request,LOGIN);
   if(!/^[\w-]{43}$/.test(state) || !browser || query.getAll('state').length !== 1) fail(400,'Anmeldung konnte nicht zugeordnet werden. Bitte neu starten.');
-  const stateHash = await hash(state);
+  const stateHash = await hash(state), hashBrowser = await hash(browser);
   // DELETE RETURNING consumes the browser-bound request atomically; callbacks cannot be replayed.
-  const pending = await env.DB.prepare('DELETE FROM oauth_requests WHERE state_hash = ? AND browser_hash = ? AND expires_at > ? RETURNING verifier, remember').bind(stateHash,await hash(browser),Date.now()).first<{verifier:string;remember:number}>();
+  const pending = await authStage('RUECKSPRUNG_LESEN',()=>env.DB.prepare('DELETE FROM oauth_requests WHERE state_hash = ? AND browser_hash = ? AND expires_at > ? RETURNING verifier, remember').bind(stateHash,hashBrowser,Date.now()).first<{verifier:string;remember:number}>());
   if(!pending) fail(400,'Anmeldung abgelaufen oder bereits verwendet. Bitte neu starten.');
   if(query.has('error') || !query.get('code') || query.getAll('code').length !== 1) fail(400,'Google-Anmeldung wurde nicht bestätigt. Bitte neu starten.');
-  const exchanged = await tokenRequest(env,{grant_type:'authorization_code',code:query.get('code')!,redirect_uri:env.AUTH_ORIGIN+'/callback',code_verifier:await open<string>(env,pending.verifier,'pkce:'+stateHash)});
-  const tokens = await exchanged.json() as any;
+  const verifier = await authStage('SCHLUESSEL_PRUEFEN',()=>open<string>(env,pending.verifier,'pkce:'+stateHash));
+  const {exchanged,tokens} = await authStage('GOOGLE_TOKEN',async()=>{
+    const exchanged = await tokenRequest(env,{grant_type:'authorization_code',code:query.get('code')!,redirect_uri:env.AUTH_ORIGIN+'/callback',code_verifier:verifier});
+    return {exchanged,tokens:await exchanged.json() as any};
+  });
   if(!exchanged.ok || !validToken(tokens) || typeof tokens.refresh_token !== 'string' || !tokens.refresh_token || !granted(tokens.scope)) fail(400,'Google hat nicht alle benötigten Berechtigungen bestätigt. Bitte die Anmeldung erneut starten und alle benötigten Zugriffe freigeben.');
-  const identityResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tokens.access_token},redirect:'error'});
-  const identity = await identityResponse.json() as any;
+  const {identityResponse,identity} = await authStage('GOOGLE_KONTO',async()=>{
+    const identityResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tokens.access_token},redirect:'error'});
+    return {identityResponse,identity:await identityResponse.json() as any};
+  });
   const email = typeof identity.email==='string'?identity.email.trim().toLowerCase():'';
   if(!identityResponse.ok || identity.email_verified !== true || typeof identity.sub !== 'string' || !identity.sub || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !multiUser(env)&&email!==env.OWNER_EMAIL.trim().toLowerCase()) fail(403,'Zugriff mit diesem Google-Konto nicht möglich.');
   const raw = random(), until = Date.now()+(pending.remember ? 30*DAY : DAY/2);
-  const encrypted = await seal(env,{access:tokens.access_token,refresh:tokens.refresh_token,expires:Date.now()+Number(tokens.expires_in)*1000},'tokens:'+identity.sub);
-  await env.DB.batch([
+  const encrypted = await authStage('ZUGANG_VERSCHLUESSELN',()=>seal(env,{access:tokens.access_token,refresh:tokens.refresh_token,expires:Date.now()+Number(tokens.expires_in)*1000},'tokens:'+identity.sub));
+  const nextRun = await authStage('TAGESLAUF_PLANEN',async()=>nextDailyCheck(Date.now()));
+  await authStage('SITZUNG_SPEICHERN',async()=>env.DB.batch([
     env.DB.prepare('INSERT INTO credentials (owner_sub,owner_email,tokens) VALUES (?,?,?) ON CONFLICT(owner_sub) DO UPDATE SET owner_email=excluded.owner_email, tokens=excluded.tokens').bind(identity.sub,email,encrypted),
     env.DB.prepare('INSERT INTO sessions (session_hash,owner_sub,csrf,expires_at) VALUES (?,?,?,?)').bind(await hash(raw),identity.sub,random(),until),
-    env.DB.prepare('INSERT INTO account_jobs (owner_sub,next_run) VALUES (?,?) ON CONFLICT(owner_sub) DO NOTHING').bind(identity.sub,nextDailyCheck(Date.now()))
-  ]);
+    env.DB.prepare('INSERT INTO account_jobs (owner_sub,next_run) VALUES (?,?) ON CONFLICT(owner_sub) DO NOTHING').bind(identity.sub,nextRun)
+  ]));
   // Replace a prior browser session rather than leaving an unused session alive for 30 days.
-  const old = cookie(request,SESSION); if(old) await env.DB.prepare('DELETE FROM sessions WHERE session_hash = ?').bind(await hash(old)).run();
+  const old = cookie(request,SESSION); if(old) await authStage('ALTE_SITZUNG',async()=>env.DB.prepare('DELETE FROM sessions WHERE session_hash = ?').bind(await hash(old)).run());
   const response = redirect(request,env,env.AUTH_ORIGIN+'/complete');
   response.headers.append('Set-Cookie',setCookie(LOGIN,'',0));
   response.headers.append('Set-Cookie',setCookie(SESSION,raw,pending.remember ? 30*86400 : undefined)); return response;
@@ -157,7 +177,7 @@ export function scriptBody(body: ReadableStream<Uint8Array> | null, action: stri
 }
 async function handle(request: Request, env: Env) {
   const url = new URL(request.url);
-  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:2});
+  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:3});
   if(!configured(env)) fail(503,'Anmeldedienst ist noch nicht vollständig eingerichtet.');
   if(url.origin !== env.AUTH_ORIGIN) fail(403,'Bitte die eingerichtete Anmeldeadresse verwenden.');
   if(request.method === 'OPTIONS') {

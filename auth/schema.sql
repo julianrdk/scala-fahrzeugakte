@@ -1,4 +1,3 @@
--- Private Anmeldedatenbank. Keine Fahrzeugdaten oder Originaldateien.
 CREATE TABLE IF NOT EXISTS oauth_requests (
   state_hash TEXT PRIMARY KEY,
   browser_hash TEXT NOT NULL,

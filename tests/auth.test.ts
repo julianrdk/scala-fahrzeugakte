@@ -45,6 +45,21 @@ describe('Cloudflare-Anmeldung mit echtem SQLite-Schema und simuliertem Google',
  it('kann auf ein dauerhaftes Cookie verzichten; Sitzung gilt dann höchstens zwölf Stunden',async()=>{const a=await login(false);const raw=a.response.headers.getSetCookie().find(x=>x.startsWith('__Host-scala_session='))!;expect(raw).not.toContain('Max-Age');const row=sql.prepare('SELECT expires_at FROM sessions').get() as any;expect(row.expires_at-Date.now()).toBeLessThanOrEqual(43200000);});
  it('weist fremde oder unbestätigte Google-Konten ab, ohne eine Sitzung zu erzeugen',async()=>{account.email='stranger@example.invalid';expect((await login()).response.status).toBe(403);expect(count('sessions')).toBe(0);expect(count('credentials')).toBe(0);account.email=env.OWNER_EMAIL;account.email_verified=false;expect((await login()).response.status).toBe(403);expect(count('sessions')).toBe(0);});
  it('weist fehlende Berechtigungen ab',async()=>{vi.stubGlobal('fetch',async()=>Response.json({access_token:'SYNTHETIC_ACCESS',refresh_token:'SYNTHETIC_REFRESH',expires_in:3600,scope:'email'}));expect((await login()).response.status).toBe(400);expect(count('credentials')).toBe(0);});
+ it('nennt eine fehlende Einrichtungstabelle ohne Teilanmeldung oder private Daten offenzulegen',async()=>{
+  sql.exec('DROP TABLE account_jobs');const a=await login(),body=await a.response.text();
+  expect(a.response.status).toBe(503);expect(body).toContain('account_jobs');expect(body).toContain('DB_TABELLE_FEHLT');
+  expect(body).not.toContain('SYNTHETIC');expect(body).not.toContain(account.email);expect(count('sessions')).toBe(0);expect(count('credentials')).toBe(0);
+ });
+ it('grenzt Netz- und Antwortfehler beim Google-Rücksprung ohne Inhalte oder Codes ein',async()=>{
+  const a=await start();vi.stubGlobal('fetch',async()=>{throw Error('SYNTHETIC_SECRET_DO_NOT_LOG');});
+  const response=await worker.fetch(request('/callback?state='+a.target.searchParams.get('state')+'&code=SYNTHETIC_CODE',{headers:{Cookie:a.browser}}),env),body=await response.text();
+  expect(response.status).toBe(503);expect(body).toContain('GOOGLE_TOKEN');expect(body).not.toContain('SYNTHETIC');expect(count('sessions')).toBe(0);
+ });
+ it('nennt beschädigte PKCE-Daten ohne Schlüssel oder Google-Aufruf',async()=>{
+  const a=await start();sql.exec("UPDATE oauth_requests SET verifier='SYNTHETIC_BAD_CIPHERTEXT'");
+  const response=await worker.fetch(request('/callback?state='+a.target.searchParams.get('state')+'&code=SYNTHETIC_CODE',{headers:{Cookie:a.browser}}),env),body=await response.text();
+  expect(response.status).toBe(503);expect(body).toContain('SCHLUESSEL_PRUEFEN');expect(body).not.toContain('SYNTHETIC');expect(calls).toHaveLength(0);
+ });
  it('bindet Callback an Browsercookie, verbraucht State einmalig und verwirft Replay',async()=>{const a=await login();const callback='/callback?state='+a.start.target.searchParams.get('state')+'&code=SYNTHETIC_CODE';expect((await worker.fetch(request(callback,{headers:{Cookie:a.start.browser}}),env)).status).toBe(400);expect(count('sessions')).toBe(1);const b=await start();expect((await worker.fetch(request('/callback?state='+b.target.searchParams.get('state')+'&code=x'),env)).status).toBe(400);});
  it('weist abgelaufenen State vor dem Tokenaustausch ab',async()=>{const a=await start();sql.exec('UPDATE oauth_requests SET expires_at=0');const response=await worker.fetch(request('/callback?state='+a.target.searchParams.get('state')+'&code=x',{headers:{Cookie:a.browser}}),env);expect(response.status).toBe(400);expect(calls).toHaveLength(0);});
  it('schützt Lesen und Schreiben mit Origin, Sitzung und zusätzlichem CSRF-Wert',async()=>{const a=await login(),s=await session(a.cookie);const before=calls.length;expect((await api(a.cookie,s.data.csrf,'commit','{}','https://evil.example')).status).toBe(403);expect((await api(a.cookie,'wrong')).status).toBe(403);expect((await api('',s.data.csrf)).status).toBe(401);expect(calls).toHaveLength(before);const external=await worker.fetch(request('/session',{headers:{Origin:'https://evil.example',Cookie:a.cookie}}),env);expect(external.status).toBe(403);expect(external.headers.has('Access-Control-Allow-Origin')).toBe(false);});

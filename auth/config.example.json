@@ -10,5 +10,5 @@
     "GOOGLE_CLIENT_SECRET": "NUR_AUS_GOOGLE_AUTH_PLATFORM_DIREKT_BEI_CLOUDFLARE_EINTRAGEN",
     "TOKEN_KEY": "INHALT_AUS_config/private-auth-key.txt"
   },
-  "binding": {"name": "DB", "type": "D1", "database": "scala-anmeldung"}
+  "binding": {"name": "DB", "type": "D1", "database": "fahrzeugakte-anmeldung"}
 }
