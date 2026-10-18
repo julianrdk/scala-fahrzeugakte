@@ -45,6 +45,32 @@ describe('Cloudflare-Anmeldung mit echtem SQLite-Schema und simuliertem Google',
  it('kann auf ein dauerhaftes Cookie verzichten; Sitzung gilt dann höchstens zwölf Stunden',async()=>{const a=await login(false);const raw=a.response.headers.getSetCookie().find(x=>x.startsWith('__Host-scala_session='))!;expect(raw).not.toContain('Max-Age');const row=sql.prepare('SELECT expires_at FROM sessions').get() as any;expect(row.expires_at-Date.now()).toBeLessThanOrEqual(43200000);});
  it('weist fremde oder unbestätigte Google-Konten ab, ohne eine Sitzung zu erzeugen',async()=>{account.email='stranger@example.invalid';expect((await login()).response.status).toBe(403);expect(count('sessions')).toBe(0);expect(count('credentials')).toBe(0);account.email=env.OWNER_EMAIL;account.email_verified=false;expect((await login()).response.status).toBe(403);expect(count('sessions')).toBe(0);});
  it('weist fehlende Berechtigungen ab',async()=>{vi.stubGlobal('fetch',async()=>Response.json({access_token:'SYNTHETIC_ACCESS',refresh_token:'SYNTHETIC_REFRESH',expires_in:3600,scope:'email'}));expect((await login()).response.status).toBe(400);expect(count('credentials')).toBe(0);});
+ it('verwendet bei Anmeldung, Token-Erneuerung, Aktenaufruf und Tageslauf den von workerd unterstützten Redirectmodus',async()=>{
+  const upstream=globalThis.fetch;
+  vi.stubGlobal('fetch',(url:any,init:any)=>{if(init?.redirect==='error')throw new TypeError('Invalid redirect value, must be follow or manual');return upstream(url,init);});
+  const a=await login();expect(a.response.status).toBe(303);const s=await session(a.cookie);
+  expect((await api(a.cookie,s.data.csrf,'read')).status).toBe(200);
+  vi.useFakeTimers();vi.setSystemTime(Date.now()+55*60000);expect((await api(a.cookie,s.data.csrf,'read')).status).toBe(200);
+  sql.exec('UPDATE account_jobs SET next_run=0');expect(await runScheduled(env)).toEqual({processed:1,ok:true});
+  expect(calls.filter(x=>x.url.endsWith('/token'))).toHaveLength(2);expect(calls.length).toBeGreaterThanOrEqual(6);
+  for(const c of calls)expect(c.init.redirect).toBe('manual');
+ });
+ it.each(['/token','/userinfo'])('folgt bei %s keiner Weiterleitung und gibt deren Ziel oder Inhalt nicht aus',async(endpoint)=>{
+  const upstream=globalThis.fetch;
+  vi.stubGlobal('fetch',async(url:any,init:any)=>{
+   if(String(url).endsWith(endpoint)){calls.push({url:String(url),init});return new Response('SYNTHETIC_PRIVATE_BODY',{status:302,headers:{Location:'https://redirect.example.invalid/SYNTHETIC_PRIVATE_TARGET'}});}
+   return upstream(url,init);
+  });
+  const a=await login(),body=await a.response.text();expect(a.response.status).toBe(502);expect(body).toContain('Weiterleitung');
+  expect(body).not.toContain('SYNTHETIC');expect(body).not.toContain('redirect.example.invalid');expect(count('sessions')).toBe(0);expect(count('credentials')).toBe(0);
+  expect(calls.some(x=>x.url.includes('redirect.example.invalid'))).toBe(false);
+ });
+ it('weist Weiterleitungen der Akten-API ohne Wiederholung oder Weitergabe von Kontodaten ab',async()=>{
+  const a=await login(),s=await session(a.cookie),before=calls.length;
+  vi.stubGlobal('fetch',async(url:any,init:any)=>{calls.push({url:String(url),init});return new Response('SYNTHETIC_PRIVATE_BODY',{status:307,headers:{Location:'https://redirect.example.invalid/SYNTHETIC_PRIVATE_TARGET'}});});
+  const response=await api(a.cookie,s.data.csrf),body=await response.text();expect(response.status).toBe(502);expect(body).not.toContain('SYNTHETIC');expect(response.headers.has('Location')).toBe(false);
+  expect(calls.length-before).toBe(1);expect(count('sessions')).toBe(1);expect(count('credentials')).toBe(1);
+ });
  it('nennt eine fehlende Einrichtungstabelle ohne Teilanmeldung oder private Daten offenzulegen',async()=>{
   sql.exec('DROP TABLE account_jobs');const a=await login(),body=await a.response.text();
   expect(a.response.status).toBe(503);expect(body).toContain('account_jobs');expect(body).toContain('DB_TABELLE_FEHLT');

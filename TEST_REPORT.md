@@ -4,7 +4,7 @@ Prüfstand der lokalen Abnahme: 18. Oktober 2026, Europe/Berlin. Lokale Umsetzun
 
 ## Automatisierte Prüfungen
 
-Vollständige lokale Prüfung nach dem optionalen Cloudflare-Anmeldeumbau: **122 Tests in 9 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut.
+Vollständige lokale Prüfung nach dem Cloudflare-Anmeldeumbau und der Laufzeitkorrektur: **129 Tests in 9 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut.
 
 `pnpm audit --json`: nach Aktualisierung der Pakete **0 gemeldete Schwachstellen**. Dies ist der Stand der abgefragten Registry, keine Garantie für künftige Meldungen. Exakte Versionen und Integritätshashes im Lockfile.
 
@@ -21,6 +21,7 @@ Vollständige lokale Prüfung nach dem optionalen Cloudflare-Anmeldeumbau: **122
 | Verbrauch | Teilbetankungen im vollständigen Intervall; keine Berechnung über eine bekannte Lücke |
 | GIS-/REST-Adapter | Deployment-ID, offizieller Endpunkt, Header statt Token-URL, vollständige Scopes, Ablauf und fremde Origin, kein Erfolg bei done:false |
 | Cloudflare-Sitzungen (lokal) | Echtes SQLite-Schema, einmaliger browsergebundener State/PKCE, ausschließlich verifiziertes Eigentümerkonto, AES-GCM-Tokens, gehashte Cookies, 30 Tage/12 Stunden, Logout und Ablauf, Origin/CSRF, widerrufene Freigaben, serverseitiges Refresh vor sechs Minuten Restlaufzeit |
+| Cloudflare-Aufrufe und Diagnose | Reproduzierter Abbruch bei workerd-inkompatiblem Redirectmodus; unterstützter manueller Modus bei Codeaustausch, Kontoabruf, Refresh, API und Tageslauf; Weiterleitungen vor Weitergabe von Geheimnissen abgewiesen; feste Fehlerkennungen ohne private Inhalte; fehlende Tabelle ohne Teilanmeldung |
 | Sitzungsadapter/Weiterleitung | Neue Adapterinstanz stellt Sitzung ohne OAuth her, nur festes Popup akzeptiert, kein Google-Bearer im Browser, kein automatisches Wiederholen von Schreibzugriffen, fester scripts.run-Umschlag, Unicode/JSON-Ausbruch/Größenlimit/ungültiges UTF-8, Stringargument im Google-Backend validiert |
 | Google-Backend (simuliert) | Eigentümer/fehlende Identität, idempotentes Setup, benannte Spalten/stringValue, Integrität, atomarer Batch-Fehler, Uploadabbruch/Dateiwiederverwendung |
 | Automation (simuliert) | Ein Editortrigger, globale/regelförmige Aktivierung, Bündelung, Versandwiederholung unterdrückt, unklarer Ausgang, Kontingentfehler und ausdrückliche Testmail |
@@ -36,7 +37,7 @@ Die Korrektur liest alle Datenblätter und `_Integrity` gemeinsam per `Sheets.Sp
 
 Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose **Leser: neue Korrektur** und **Lesetest: OK**. Der Nutzer bestätigte ausdrücklich den **Lese-/Schreibtest auch auf der Website**, den Eingang der ausdrücklich ausgelösten Testmail sowie Upload/Öffnen/Download des Beispieldokuments. Fremdkonto-Test, automatischer Triggerlauf sowie realer Export/Restore sind damit noch nicht nachgewiesen. Das Einrichtungspaket `examples/einrichtungstest/Belegtest.json` ist gegen das verbindliche Schema geprüft und enthält nur ein Beispieldokument, keine Ausgaben, Arbeiten oder Regeln.
 
-Die neue Cloudflare-Anmeldung ist noch nicht eingerichtet. Die SQLite-/Google-Mocks beweisen keinen echten Cloudflare-/Google-Codeaustausch, Cookieverhalten eines realen Browsers, erfolgreiche Produktionseinstellung oder Einhaltung des Free-CPU-Limits mit 4-MiB-Originalen. Vor Aktivierung/Abnahme gemäß `docs/CLOUDFLARE_ANMELDUNG.md` prüfen. Die öffentliche Konfiguration bleibt bis dahin beim bisherigen Modell.
+Die Cloudflare-Anmeldung ist inzwischen eingerichtet und in der öffentlichen Website aktiviert. HTTPS, öffentliche Konfiguration, unauthentifizierte Sitzungsprüfung und Start der Anmeldung mit D1-State wurden live geprüft; der echte Google-Rücksprung meldete `GOOGLE_TOKEN`. Ursache im Code: `redirect:'error'` wird von Cloudflares workerd bereits vor dem Netzaufruf abgewiesen. Ein neuer Regressionstest reproduzierte den Abbruch; die Korrektur verwendet durchgehend `manual` und lehnt 3xx-Antworten ausdrücklich ab. Grundlage: [workerd-Implementierung](https://github.com/cloudflare/workerd/blob/main/src/workerd/api/http.c%2B%2B). Der vollständige echte Google-Login, Cookies nach Browserneustart, zweites Konto und Free-CPU-Limit mit 4-MiB-Originalen bleiben bis zur echten Abnahme offen. Tagesprüfungs-Worker ebenfalls noch ausstehend.
 
 ## Browserprüfung
 

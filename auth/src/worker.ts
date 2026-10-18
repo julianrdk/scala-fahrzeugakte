@@ -85,8 +85,18 @@ async function session(request: Request, env: Env): Promise<Session> {
 function requireCsrf(request: Request, s: Session) {if(request.headers.get('X-Scala-CSRF') !== s.csrf) fail(403,'Sitzungsprüfung fehlgeschlagen. Bitte die Seite neu laden.');}
 function granted(raw: unknown) {if(typeof raw !== 'string') return false; const got = new Set(raw.split(' ').map(x => x === 'email' ? 'https://www.googleapis.com/auth/userinfo.email' : x)); return scopes.every(x => got.has(x));}
 function validToken(result: any) {return typeof result.access_token === 'string' && result.access_token.length > 0 && Number.isFinite(Number(result.expires_in)) && Number(result.expires_in) > 360;}
+async function googleFetch(url: string, init: RequestInit) {
+  // workerd rejects redirect:'error' before sending the request. Manual mode
+  // plus explicit rejection preserves the intended no-redirect guarantee.
+  const response = await fetch(url,{...init,redirect:'manual'});
+  if(response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    fail(502,'Google hat eine unerwartete Weiterleitung zurückgegeben. Der Aufruf wurde abgebrochen.');
+  }
+  return response;
+}
 async function tokenRequest(env: Env, fields: Record<string,string>) {
-  return fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET.trim()}),redirect:'error'});
+  return googleFetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET.trim()})});
 }
 async function accessToken(env: Env, s: Session) {
   const tokens = await open<Tokens>(env,s.tokens,'tokens:'+s.owner_sub);
@@ -135,7 +145,7 @@ async function callback(request: Request, env: Env) {
   });
   if(!exchanged.ok || !validToken(tokens) || typeof tokens.refresh_token !== 'string' || !tokens.refresh_token || !granted(tokens.scope)) fail(400,'Google hat nicht alle benötigten Berechtigungen bestätigt. Bitte die Anmeldung erneut starten und alle benötigten Zugriffe freigeben.');
   const {identityResponse,identity} = await authStage('GOOGLE_KONTO',async()=>{
-    const identityResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tokens.access_token},redirect:'error'});
+    const identityResponse = await googleFetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tokens.access_token}});
     return {identityResponse,identity:await identityResponse.json() as any};
   });
   const email = typeof identity.email==='string'?identity.email.trim().toLowerCase():'';
@@ -177,7 +187,7 @@ export function scriptBody(body: ReadableStream<Uint8Array> | null, action: stri
 }
 async function handle(request: Request, env: Env) {
   const url = new URL(request.url);
-  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:3});
+  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:4});
   if(!configured(env)) fail(503,'Anmeldedienst ist noch nicht vollständig eingerichtet.');
   if(url.origin !== env.AUTH_ORIGIN) fail(403,'Bitte die eingerichtete Anmeldeadresse verwenden.');
   if(request.method === 'OPTIONS') {
@@ -203,8 +213,8 @@ async function handle(request: Request, env: Env) {
   if(Number(request.headers.get('Content-Length')) > MAX_BODY) fail(413,'Anfrage zu groß.');
   const token = await accessToken(env,s);
   // No automatic replay of a write after an uncertain response. Existing operation IDs handle retries.
-  const upstream = await fetch('https://script.googleapis.com/v1/scripts/'+encodeURIComponent(env.GOOGLE_DEPLOYMENT_ID)+':run',{
-    method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:scriptBody(request.body,action),redirect:'error',duplex:'half'
+  const upstream = await googleFetch('https://script.googleapis.com/v1/scripts/'+encodeURIComponent(env.GOOGLE_DEPLOYMENT_ID)+':run',{
+    method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:scriptBody(request.body,action),duplex:'half'
   } as RequestInit);
   const h = headers(request,env); h.set('Content-Type','application/json; charset=utf-8');
   return new Response(upstream.body,{status:upstream.status,headers:h});
@@ -246,7 +256,7 @@ export async function runScheduled(env:Env){
   const credentials=await env.DB.prepare('SELECT owner_sub,owner_email,tokens FROM credentials WHERE owner_sub=?').bind(claimed.owner_sub).first<Session>();
   if(!credentials||!multiUser(env)&&credentials.owner_email!==env.OWNER_EMAIL.trim().toLowerCase())fail(401,'Kontofreigabe nicht verfügbar.');
   const token=await accessToken(env,credentials);
-  const response=await fetch('https://script.googleapis.com/v1/scripts/'+encodeURIComponent(env.GOOGLE_DEPLOYMENT_ID)+':run',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({function:'scalaApi',parameters:['daily',{}],devMode:false}),redirect:'error'});
+  const response=await googleFetch('https://script.googleapis.com/v1/scripts/'+encodeURIComponent(env.GOOGLE_DEPLOYMENT_ID)+':run',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({function:'scalaApi',parameters:['daily',{}],devMode:false})});
   const result=await response.json() as any;
   if(!response.ok||result.done!==true||result.error||result.response?.result?.ok!==true)fail(502,'Tägliche Prüfung nicht bestätigt.');
   await env.DB.prepare('UPDATE account_jobs SET next_run=?,lease_until=0,last_run=?,last_error=NULL WHERE owner_sub=?').bind(nextDailyCheck(Date.now()),Date.now(),claimed.owner_sub).run();
