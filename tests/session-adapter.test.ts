@@ -1,5 +1,6 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {SessionAdapter,GoogleAdapter,googleConnection,SignInRequired} from '../src/adapter';
+import {FuelSearchError} from '../shared/fuel';
 const config={clientId:'test.apps.googleusercontent.com',deploymentId:'SYNTHETIC_DEPLOYMENT',origin:'https://car.jurodak.com',authOrigin:'https://auth.jurodak.com'};
 let requests:{url:string;options:any}[],signedIn:boolean,failApi:boolean,events:Map<string,(event:any)=>void>,popup:{closed:boolean};
 beforeEach(()=>{
@@ -14,6 +15,18 @@ describe('Sitzungsadapter ohne Browser-Tokens',()=>{
  it('bleibt bis zur bewussten Konfiguration beim bisherigen Google-Adapter',()=>{expect(googleConnection({...config,authOrigin:undefined})).toBeInstanceOf(GoogleAdapter);expect(googleConnection(config)).toBeInstanceOf(SessionAdapter);});
  it('stellt auch in einer neuen Adapterinstanz die Sitzung über den Cookie wieder her',async()=>{for(let n=0;n<2;n++){const adapter=new SessionAdapter(config);expect(await adapter.restore()).toBe(true);await adapter.call('read');}expect(requests.filter(r=>r.url.endsWith('/session'))).toHaveLength(2);for(const r of requests){expect(r.options.credentials).toBe('include');expect(r.options.cache).toBe('no-store');expect(r.options.headers?.Authorization).toBeUndefined();expect(r.url).not.toContain('CSRF');}expect(requests[1].options.headers['X-Scala-CSRF']).toBe('SYNTHETIC_CSRF');});
  it('meldet ein fehlendes Cookie ohne automatische Google-Anmeldung',async()=>{signedIn=false;expect(await new SessionAdapter(config).restore()).toBe(false);expect(window.open).not.toHaveBeenCalled();});
+ it('verwendet für Tankpreise den geschützten JSON-Endpunkt ohne Google-Umschlag oder Browser-Token',async()=>{
+  const adapter=new SessionAdapter(config);await adapter.restore();
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({enabled:true}));expect(await adapter.fuelStatus()).toEqual({enabled:true});
+  const result={center:{lat:52.52,lng:13.4,label:'Mein Standort'},stations:[],fetchedAt:'2026-10-26T12:00:00.000Z',cached:false};
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json(result));expect(await adapter.searchFuel({lat:52.52,lng:13.4})).toEqual(result);
+  const [url,init]=vi.mocked(fetch).mock.calls.at(-1)!;expect(url).toBe(config.authOrigin+'/fuel/search');expect(init?.credentials).toBe('include');expect(init?.headers).toMatchObject({'X-Scala-CSRF':'SYNTHETIC_CSRF','Content-Type':'application/json'});expect((init?.headers as Record<string,string>).Authorization).toBeUndefined();expect(JSON.parse(String(init?.body))).toEqual({lat:52.52,lng:13.4});
+ });
+ it('übernimmt Tankpreis-Wartezeiten und stoppt bei abgelaufener Sitzung ohne Wiederholung',async()=>{
+  const adapter=new SessionAdapter(config);await adapter.restore();
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({error:'Bitte warten.',retryAfter:42},{status:429}));const delayed=adapter.searchFuel({postalCode:'10115'});await expect(delayed).rejects.toBeInstanceOf(FuelSearchError);await expect(delayed).rejects.toMatchObject({message:'Bitte warten.',retryAfter:42});
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({error:'Anmelden'},{status:401}));await expect(adapter.searchFuel({postalCode:'10115'})).rejects.toBeInstanceOf(SignInRequired);const count=vi.mocked(fetch).mock.calls.length;await expect(adapter.fuelStatus()).rejects.toBeInstanceOf(SignInRequired);expect(fetch).toHaveBeenCalledTimes(count);expect(window.open).not.toHaveBeenCalled();
+ });
  it('verlangt erneute Anmeldung bei Ablauf und wiederholt einen Schreibaufruf nicht',async()=>{const adapter=new SessionAdapter(config);await adapter.restore();failApi=true;await expect(adapter.call('commit',{operation_id:'idempotent-operation'})).rejects.toBeInstanceOf(SignInRequired);expect(requests.filter(r=>r.url.includes('/api/'))).toHaveLength(1);await expect(adapter.call('commit')).rejects.toBeInstanceOf(SignInRequired);expect(requests.filter(r=>r.url.includes('/api/'))).toHaveLength(1);});
  it('bestätigt Abmeldung beim Server und löscht danach den lokalen CSRF-Wert',async()=>{const adapter=new SessionAdapter(config);await adapter.restore();await adapter.disconnect();expect(requests.at(-1)?.url).toBe(config.authOrigin+'/logout');expect(requests.at(-1)?.options.method).toBe('POST');await expect(adapter.call('read')).rejects.toBeInstanceOf(SignInRequired);});
  it('akzeptiert nur Rückmeldung vom geöffneten Fenster und der festen Anmelde-Origin',async()=>{const adapter=new SessionAdapter(config);let finished=false;const pending=adapter.authorize(true).then(()=>{finished=true;});const message=events.get('message')!;message({origin:'https://evil.example',source:popup,data:{type:'scala-session-ready'}});message({origin:config.authOrigin,source:{},data:{type:'scala-session-ready'}});await Promise.resolve();expect(finished).toBe(false);message({origin:config.authOrigin,source:popup,data:{type:'scala-session-ready'}});await pending;expect(finished).toBe(true);expect(window.open).toHaveBeenCalledWith(config.authOrigin+'/login?remember=1',expect.any(String),expect.any(String));expect(events.has('message')).toBe(false);});

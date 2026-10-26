@@ -1,4 +1,5 @@
 import {scopes} from '../../shared/google-scopes';
+import {fuelBody,fuelStatus,searchFuel,FuelError} from './fuel';
 
 interface Statement {
   bind(...values: unknown[]): Statement;
@@ -15,6 +16,8 @@ export interface Env {
   OWNER_EMAIL: string;
   TOKEN_KEY: string;
   ACCOUNT_MODE?: 'owner'|'multi';
+  TANKERKOENIG_API_KEY?: string;
+  FUEL_GEOCODER_URL?: string;
 }
 type Tokens = {access: string; refresh: string; expires: number};
 type Session = {owner_sub: string; owner_email: string; csrf: string; expires_at: number; tokens: string};
@@ -187,18 +190,26 @@ export function scriptBody(body: ReadableStream<Uint8Array> | null, action: stri
 }
 async function handle(request: Request, env: Env) {
   const url = new URL(request.url);
-  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:4});
+  if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:5});
   if(!configured(env)) fail(503,'Anmeldedienst ist noch nicht vollständig eingerichtet.');
   if(url.origin !== env.AUTH_ORIGIN) fail(403,'Bitte die eingerichtete Anmeldeadresse verwenden.');
   if(request.method === 'OPTIONS') {
     requireOrigin(request,env);
-    if(!['/session','/logout','/automation'].includes(url.pathname) && !url.pathname.startsWith('/api/')) fail(404,'Unbekannter Aufruf.');
+    if(!['/session','/logout','/automation','/fuel/status','/fuel/search'].includes(url.pathname) && !url.pathname.startsWith('/api/')) fail(404,'Unbekannter Aufruf.');
     const h = headers(request,env); h.set('Access-Control-Allow-Methods','GET, POST'); h.set('Access-Control-Allow-Headers','Content-Type, X-Scala-CSRF'); return new Response(null,{status:204,headers:h});
   }
   if(url.pathname === '/login' && request.method === 'GET') return login(request,env);
   if(url.pathname === '/callback' && request.method === 'GET') return callback(request,env);
   if(url.pathname === '/complete' && request.method === 'GET') return complete(request,env);
   requireOrigin(request,env);
+  if(url.pathname.startsWith('/fuel/')){
+    const s=await session(request,env);
+    try{
+      if(url.pathname==='/fuel/status'&&request.method==='GET')return json(request,env,await fuelStatus(env));
+      if(url.pathname==='/fuel/search'&&request.method==='POST'){requireCsrf(request,s);return json(request,env,await searchFuel(env,await fuelBody(request)));}
+      fail(404,'Unbekannter Aufruf.');
+    }catch(error){if(error instanceof FuelError){const response=json(request,env,{error:error.message,code:error.code,retryAfter:error.retryAfter},error.status);if(error.retryAfter)response.headers.set('Retry-After',String(error.retryAfter));return response;}throw error;}
+  }
   if(url.pathname === '/session' && request.method === 'GET') {const s = await session(request,env); return json(request,env,{signedIn:true,csrf:s.csrf,expiresAt:s.expires_at,email:s.owner_email,accountId:s.owner_sub});}
   if(url.pathname === '/automation' && request.method === 'GET') {const s=await session(request,env);const job=await env.DB.prepare('SELECT next_run,last_run,last_error FROM account_jobs WHERE owner_sub=?').bind(s.owner_sub).first();return json(request,env,job??{next_run:null,last_run:null,last_error:'Tagesprüfung noch nicht eingerichtet.'});}
   if(url.pathname === '/logout' && request.method === 'POST') {

@@ -2,7 +2,7 @@
 
 Fahrzeugakte mit getrennten Google-Konten. Ein Fahrzeug pro Konto; Hersteller und Modell werden beim Hinzufügen angegeben. React/TypeScript/Vite als statische Oberfläche, Google Sheets für strukturierte Daten, Google Drive für unveränderte Originale und Google Apps Script für validierte Zugriffe und tägliche Aufgaben.
 
-Repository: [julianrdk/scala-fahrzeugakte](https://github.com/julianrdk/scala-fahrzeugakte), veröffentlicht unter **https://car.jurodak.com**. Der Nutzer hat den echten Google-Lese-/Schreibtest, den Testmail-Eingang sowie Beispieldokument-Upload/Öffnen/Download bestätigt. Triggerlauf und echte Wiederherstellung sind noch offen. Der zusätzliche Cloudflare-Anmeldedienst mit Kontentrennung und Tagesprüfung ist gebaut und lokal getestet, aber noch nicht eingerichtet oder aktiviert; siehe [Einrichtung der dauerhaften Anmeldung](docs/CLOUDFLARE_ANMELDUNG.md).
+Repository: [julianrdk/scala-fahrzeugakte](https://github.com/julianrdk/scala-fahrzeugakte), veröffentlicht unter **https://car.jurodak.com**. Der Nutzer hat den echten Google-Lese-/Schreibtest, den Testmail-Eingang sowie Beispieldokument-Upload/Öffnen/Download bestätigt. Der Cloudflare-Anmeldedienst ist eingerichtet und aktiviert. Dauerhafte Anmeldung nach Browserneustart, zweites echtes Konto, Tagesprüfungs-Worker und echte Wiederherstellung sind noch offen; siehe [Einrichtung der dauerhaften Anmeldung](docs/CLOUDFLARE_ANMELDUNG.md). Die neue Tankstellenkarte ist lokal vorbereitet; Livepreise benötigen die zusätzliche Einrichtung unten.
 
 Die echte Akte beginnt leer. **Testmodus öffnen** führt in einen getrennten, leeren IndexedDB-Speicher dieses Browsers. Keine Google-Verbindung wird simuliert, keine E-Mail versendet. Beispieldateien sind ausdrücklich Testdaten.
 
@@ -27,7 +27,8 @@ Die ausgegebene lokale URL öffnen. Produktive Anmeldung ist absichtlich erst au
 - Datum-ODER-Kilometer-Fälligkeit, bestätigte Erledigung, Kalenderarithmetik, Mail-Bündelung und kopierbare Recherchetexte.
 - Atomare Tabellencommits, Sperre und Revisionen, datierte Sicherungen, ZIP/CSV-Export, Wiederherstellung in neue Ressourcen.
 - A4-Serviceheft, Kostenübersicht und Verkaufsfassung; responsive Oberfläche und Startbildschirm-Manifest.
-- Tankpreis-Link ohne Schlüssel. Integrierte Tankerkönig-Suche/Karte ist die optionale, hier nicht aktivierte Erweiterung.
+- Eingabebeispiele als Platzhalter; unbekannte Angaben werden dadurch nicht vorausgefüllt oder gespeichert.
+- Eigener Hauptbereich Tankstellen mit OpenStreetMap-Karte, optionaler Standortfreigabe, deutscher PLZ-Suche, E5/E10/Diesel und Umkreisfilter. Livepreise über den geschützten Cloudflare-Dienst nach [einmaliger Einrichtung](docs/TANKSTELLENSUCHE.md); der externe Link bleibt verfügbar.
 
 ## Wegweiser
 
@@ -35,6 +36,7 @@ Die ausgegebene lokale URL öffnen. Produktive Anmeldung ist absichtlich erst au
 | --- | --- |
 | [SETUP.md](SETUP.md) | Einrichtung ab Domain/Repository, kleinste nächste Schritte und Fehlerhilfe |
 | [docs/CLOUDFLARE_ANMELDUNG.md](docs/CLOUDFLARE_ANMELDUNG.md) | Kostenloser zusätzlicher Anmeldedienst, Sitzungscookie und Schrittfolge |
+| [docs/TANKSTELLENSUCHE.md](docs/TANKSTELLENSUCHE.md) | Kostenlosen Tankerkönig-Schlüssel eintragen, Datenbank ergänzen und Karte prüfen |
 | [DATA_MODEL.md](DATA_MODEL.md) | Tabellen, Kostenlogik, Transaktionen, Revisionen, Grenzen |
 | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | ZIP und Drive-Sicherung, geprüfter Wiederherstellungsablauf |
 | [TEST_REPORT.md](TEST_REPORT.md) | Tatsächliche lokale Prüfungen und verbleibende Kontotests |

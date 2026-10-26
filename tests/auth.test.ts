@@ -30,6 +30,13 @@ async function session(cookie:string){const response=await worker.fetch(request(
 async function api(cookie:string,csrf:string,path='commit',body='{}',origin=env.APP_ORIGIN){return worker.fetch(request('/api/'+path,{method:'POST',headers:{Origin:origin,Cookie:cookie,'X-Scala-CSRF':csrf,'Content-Type':'application/json'},body}),env);}
 
 describe('Cloudflare-Anmeldung mit echtem SQLite-Schema und simuliertem Google',()=>{
+ it('schützt die Tankstellensuche mit Sitzung, exakter Origin und CSRF statt eines öffentlichen Google-Proxys',async()=>{
+  env.TANKERKOENIG_API_KEY='11111111-1111-4111-8111-111111111111';const a=await login(),s=await session(a.cookie),before=calls.length;
+  const search=(cookie:string,csrf:string,origin=env.APP_ORIGIN)=>worker.fetch(request('/fuel/search',{method:'POST',headers:{Origin:origin,Cookie:cookie,'X-Scala-CSRF':csrf,'Content-Type':'application/json'},body:'{"lat":52.52,"lng":13.4}'}),env);
+  expect((await search('',s.data.csrf)).status).toBe(401);expect((await search(a.cookie,'wrong')).status).toBe(403);expect((await search(a.cookie,s.data.csrf,'https://evil.invalid')).status).toBe(403);expect(calls).toHaveLength(before);
+  const status=await worker.fetch(request('/fuel/status',{headers:{Origin:env.APP_ORIGIN,Cookie:a.cookie}}),env);expect(await status.json()).toEqual({enabled:true});
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({ok:true,stations:[]}));const found=await search(a.cookie,s.data.csrf);expect(found.status).toBe(200);expect(await found.json()).toMatchObject({stations:[],center:{label:'Mein Standort'},cached:false});const [target,init]=vi.mocked(fetch).mock.calls.at(-1)!;expect(String(target)).toContain('https://creativecommons.tankerkoenig.de/json/list.php?');expect((init?.headers as Record<string,string>).Authorization).toBeUndefined();
+ });
  it('fordert offline access, bestehende fünf Scopes, einmaligen State und PKCE S256',async()=>{
   const a=await start();expect(a.target.origin).toBe('https://accounts.google.com');expect(a.target.searchParams.get('access_type')).toBe('offline');expect(a.target.searchParams.get('scope')).toBe(scopes.join(' '));expect(a.target.searchParams.get('code_challenge_method')).toBe('S256');expect(a.target.searchParams.get('redirect_uri')).toBe(env.AUTH_ORIGIN+'/callback');expect(a.browser).not.toContain('SYNTHETIC');
   const row=sql.prepare('SELECT * FROM oauth_requests').get() as any;expect(row.verifier).not.toContain(a.target.searchParams.get('code_challenge'));expect(row.state_hash).not.toBe(a.target.searchParams.get('state'));

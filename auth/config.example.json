@@ -10,5 +10,11 @@
     "GOOGLE_CLIENT_SECRET": "NUR_AUS_GOOGLE_AUTH_PLATFORM_DIREKT_BEI_CLOUDFLARE_EINTRAGEN",
     "TOKEN_KEY": "INHALT_AUS_config/private-auth-key.txt"
   },
+  "optionalSecrets": {
+    "TANKERKOENIG_API_KEY": "PERSOENLICHEN_SCHLUESSEL_NUR_BEI_CLOUDFLARE_EINTRAGEN"
+  },
+  "optionalVariables": {
+    "FUEL_GEOCODER_URL": "https://nominatim.openstreetmap.org/search"
+  },
   "binding": {"name": "DB", "type": "D1", "database": "fahrzeugakte-anmeldung"}
 }

@@ -1,6 +1,7 @@
 import {emptyState,clone,meta,commitImport,editEntity,completeReminder,hashBytes,assertFile,verifySignature,validateState,fail} from '../shared/logic';
 import type {State,UploadFile} from '../shared/types';
 import {addVehicle} from '../shared/vehicle';
+import {FuelSearchError,type FuelQuery,type FuelResult,type FuelStatus} from '../shared/fuel';
 export type Config={clientId:string;deploymentId:string;origin:string;authOrigin?:string};
 export interface Adapter{kind:'google'|'test';accountEmail?:string;accountId?:string;call<T=any>(action:string,arg?:any):Promise<T>;}
 import {scopes} from '../shared/google-scopes';
@@ -47,6 +48,14 @@ export class SessionAdapter implements Adapter{
   if(!await this.restore())throw Error('Google-Anmeldung wurde nicht bestätigt. Bitte erneut anmelden. Deine Eingaben bleiben erhalten.');
  }
  async disconnect(){if(!this.csrf&&!await this.restore())return;const response=await this.request('/logout',{method:'POST',headers:{'X-Scala-CSRF':this.csrf}});if(!response.ok&&response.status!==401)throw Error('Abmeldung wurde nicht bestätigt. Bitte erneut versuchen.');this.csrf='';}
+ private async fuelRequest<T>(path:string,init:RequestInit={}):Promise<T>{
+  if(!this.csrf)throw new SignInRequired('Bitte erneut mit Google anmelden.');
+  const response=await this.request(path,init);
+  if(response.status===401){this.csrf='';throw new SignInRequired('Bitte erneut mit Google anmelden, um Tankpreise zu suchen.');}
+  const result=await response.json();if(!response.ok)throw new FuelSearchError(typeof result.error==='string'?result.error:'Die Tankstellensuche ist gerade nicht verfügbar.',Number(result.retryAfter)||0);return result as T;
+ }
+ fuelStatus(){return this.fuelRequest<FuelStatus>('/fuel/status');}
+ searchFuel(query:FuelQuery,signal?:AbortSignal){return this.fuelRequest<FuelResult>('/fuel/search',{method:'POST',headers:{'Content-Type':'application/json','X-Scala-CSRF':this.csrf},body:JSON.stringify(query),signal});}
  async call<T=any>(action:string,arg:any={}):Promise<T>{
   if(!this.csrf)throw new SignInRequired('Bitte erneut mit Google anmelden. Deine Eingaben bleiben erhalten.');
   const response=await this.request('/api/'+encodeURIComponent(action),{method:'POST',headers:{'Content-Type':'application/json','X-Scala-CSRF':this.csrf},body:JSON.stringify(arg)});
