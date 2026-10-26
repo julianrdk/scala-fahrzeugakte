@@ -76,7 +76,7 @@ export class TestAdapter implements Adapter{
   let s:State=(await readDB('state'))??emptyState();let result:any;const at=new Date().toISOString();
   switch(action){
    case 'createVehicle':s=addVehicle(s,arg,at);result={ok:true};break;
-   case 'read':return {state:s,status:{last_check:null,last_backup:null,last_error:null,remaining_mail_quota:null,trigger_installed:false}} as T;
+   case 'read':return {state:s,status:{features:{capture:1,gallery:1},last_check:null,last_backup:null,last_error:null,remaining_mail_quota:null,trigger_installed:false}} as T;
    case 'upload':{const f=arg.file as UploadFile;assertFile(f);const bytes=base64Bytes(f.base64);if(bytes.length!==f.size||hashBytes(bytes)!==f.sha256)fail('Prüfsumme stimmt nicht.');verifySignature(bytes,f.mime);let u=s.Uploads.find(u=>u.sha256===f.sha256);if(!u){u={...meta('upload-'+f.sha256,at),operation_id:arg.operation_id,sha256:f.sha256,size:f.size,mime:f.mime,source_filename:f.source_filename,drive_id:'test-'+f.sha256};s.Uploads.push(u);}await writeDB([['file:'+u.drive_id,f]]);result=u;break;}
    case 'commit':{const output=commitImport(s,arg,at);s=output.state;result=output.result;break;}
    case 'edit':s=editEntity(s,arg.table,arg.id,arg.revision,arg.patch,at);result={ok:true};break;

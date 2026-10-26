@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "node scripts/prepare-ocr.mjs && vite --host 127.0.0.1",
     "preview": "vite preview --host 127.0.0.1",
     "schema": "node scripts/schema.mjs",
     "build:backend": "node scripts/build-backend.mjs",
     "build:auth": "node scripts/build-auth.mjs",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm typecheck && vite build && pnpm build:backend && pnpm build:auth && node scripts/verify-artifacts.mjs",
+    "build": "pnpm typecheck && node scripts/prepare-ocr.mjs && vite build && pnpm build:backend && pnpm build:auth && node scripts/verify-artifacts.mjs",
     "test": "vitest run",
     "check": "pnpm test && pnpm build",
     "configure": "node scripts/configure.mjs",
@@ -18,12 +18,16 @@
   },
   "dependencies": {
     "@noble/hashes": "1.8.0",
+    "@tesseract.js-data/deu": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "ajv": "8.20.0",
     "fflate": "0.8.3",
     "leaflet": "1.9.4",
     "lucide-react": "0.468.0",
+    "pdfjs-dist": "6.4.299",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
     "@types/leaflet": "1.9.22",

@@ -1,6 +1,6 @@
 # Datenmodell und Speicherverhalten
 
-Speicherversion 1. Format `vehicle-record-import`, Importversion 1. Der wortgleiche Vertrag und Prompt liegen unter `docs/`; `shared/import-v1.schema.json` ist die ausführbare Validierung. Änderungen daran erfordern abgestimmte Version, Beispiele, Prompt und Migration. Unbekannte Versionen werden abgewiesen; keine stillen Migrationen.
+Speicherversion 1. Format `vehicle-record-import`, Importversion 1. Der wortgleiche Vertrag und Prompt liegen unter `docs/`; `shared/import-v1.schema.json` ist die ausführbare Validierung. Änderungen daran erfordern abgestimmte Version, Beispiele, Prompt und Migration. Unbekannte Versionen werden abgewiesen. Die hier dokumentierte Erweiterung des internen Tabellenlayouts ergänzt ausschließlich optionale Felder; der Importvertrag v1 bleibt unverändert.
 
 ## Struktur
 
@@ -56,7 +56,24 @@ Bearbeitung verlangt die gelesene Revision. Nach einer Änderung durch Gerät A 
 
 ## Direkte Tabellenänderungen und Migration
 
-Manuelles Ändern der Sheets ist kein paralleler Standardworkflow. Header-, Daten- und Formelprüfung sowie die gemeinsam gespeicherte Integritätskennung erkennen direkte Änderungen. Die Akte sperrt weitere Aktionen bei Abweichung. Kein automatisches Neu-Hashen ungeprüfter Nutzereingriffe; stattdessen unveränderte Sicherung in neue Ressourcen wiederherstellen. Eine künftige Migration muss die alte Version lesen, fachlich validieren und in neue Ressourcen schreiben; bisher existiert keine ältere veröffentlichte Speicherversion.
+Manuelles Ändern der Sheets ist kein paralleler Standardworkflow. Header-, Daten- und Formelprüfung sowie die gemeinsam gespeicherte Integritätskennung erkennen direkte Änderungen. Die Akte sperrt weitere Aktionen bei Abweichung. Kein automatisches Neu-Hashen ungeprüfter Nutzereingriffe; stattdessen unveränderte Sicherung in neue Ressourcen wiederherstellen.
+
+Die Erweiterung für Belegerkennung akzeptiert ausschließlich das bekannte bisherige oder das neue Spaltenlayout. Zuerst wird der vollständige ursprüngliche Stand einschließlich seiner ursprünglichen Spaltenbreiten gegen `_Integrity` geprüft. Ein reiner Lesezugriff verändert nichts. Vor dem ersten Schreibzugriff auf ein altes Layout werden unter Script-Lock eine datierte Drive-Sicherung und die Originalkopien erstellt. Anschließend erweitert ein atomarer Sheets-Batch die Tabellen um die optionalen Spalten und schreibt die zugehörige Prüfsumme. IDs, vorhandene Inhalte und Referenzen bleiben erhalten. Ein fehlgeschlagener Batch lässt den alten Stand lesbar; eine Wiederholung bleibt möglich. Unbekannte Spalten, zusätzliche Inhalte unter alten Überschriften und eine abweichende Prüfsumme werden vor der Umstellung abgewiesen.
+
+## Galerie, Werkstätten und Positionspreise
+
+Die Galerie verwendet vorhandene `Documents` vom Typ `photo` und den bestehenden Standardverweis `Vehicles.photo_id`. Ein bisher anderweitig typisiertes, ausdrücklich ausgewähltes Fahrzeugfoto wird ebenfalls angezeigt. Rechnungs- und Belegscans werden nicht pauschal zu Galeriefotos. Foto-Uploads erzeugen keine Ausgaben oder Arbeiten. Die stabile Reihenfolge ist Standardfoto, danach `created_at` absteigend und bei Gleichstand ID. Vorschauen werden nur in einer kontoabhängigen Browsersitzung gehalten; zwei Abrufe gleichzeitig, keine dauerhafte öffentliche Kopie.
+
+| Neue optionale Spalte | Inhalt |
+| --- | --- |
+| `Settings.workshops` | JSON-Liste mit höchstens 50 Profilen: `id`, `name`, optionale Adresse als leerer String, `archived` |
+| `Settings.self_workshop_id` | ID eines aktiven Eigenleistungsstandards oder `null` |
+| `Work.workshop_snapshot` | Historische Kopie aus `profile_id`, `name` und `address` oder `null` |
+| `Expenses.position_prices` | Zur Materialliste ausgerichtete JSON-Liste mit `unit_price`, `total_cents` und `basis` |
+
+`unit_price` ist eine exakte Dezimalzeichenfolge mit höchstens sechs Nachkommastellen, kein gerundeter Fließkomma-Geldbetrag. `total_cents` ist eine ganze Centzahl oder unbekannt. `basis` unterscheidet `net`, `gross` und `unknown`. Ausschließlich `Expenses.amount_cents` zählt in den Ist-Kosten; Positionssummen und Arbeitseinträge werden nicht nochmals addiert. Verkäufer bleibt `Expenses.vendor`, die ausführende Werkstatt gehört zur Arbeit.
+
+Der bestätigte Speichervorgang darf neben dem unveränderten Importpaket einen streng geprüften `capture`-Block mit `workshops_by_work_ref` und `prices_by_expense_ref` enthalten. Referenzen müssen zum selben Paket passen. Die Zusatzangaben gehen in den Vorgangsfingerprint ein; der Paketfingerprint für Dubletten bleibt auf dem unveränderten v1-Inhalt. Änderungen einer Werkstatt überschreiben keine historischen Kopien. Alte Sicherungen ohne diese Felder bleiben gültig, neue Sicherungen und CSV-Exporte enthalten sie.
 
 ## Grenzen und Privatsphäre
 

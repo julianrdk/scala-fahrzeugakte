@@ -13,10 +13,12 @@ export const columns:Record<Table,string[]>={
  Settings:[...common,'hidden_categories','external_fuel_url','email_enabled','prompt_templates','backup_retention'],Odometer:[...common,'date','km','confirmed','note'],
  Operations:[...common,'fingerprint','status','result'],Uploads:[...common,'operation_id','sha256','size','mime','source_filename','drive_id'],NotificationLog:[...common,'key','status','message'],FavoriteStations:[...common,'station_id','name']
 };
-const jsonFields=['document_refs','expense_refs','fuel','items','parts','modification_details','allocations','page_numbers','before','after','hidden_categories','prompt_templates','result'];
+export const legacyColumns:Record<Table,string[]>=Object.fromEntries(Object.entries(columns).map(([t,c])=>[t,[...c]])) as Record<Table,string[]>;
+columns.Expenses.push('position_prices');columns.Work.push('workshop_snapshot');columns.Settings.push('workshops','self_workshop_id');
+const jsonFields=['document_refs','expense_refs','fuel','items','parts','modification_details','allocations','page_numbers','before','after','hidden_categories','prompt_templates','result','position_prices','workshop_snapshot','workshops'];
 const numberFields=['revision','purchase_odometer','odometer_km','amount_cents','estimated_cost_cents','labor_minutes','size','due_odometer_km','repeat_months','repeat_km','repeat_days','lead_days','lead_km','backup_retention','km'];
 const booleanFields=['archived','voided','missing','email_enabled','fixed_calendar','confirmed'];
-const optionalFields=['cashflow_type','fuel','items','parts','estimated_cost_cents','modification_details','page_numbers'];
+const optionalFields=['cashflow_type','fuel','items','parts','estimated_cost_cents','modification_details','page_numbers','position_prices','workshop_snapshot','workshops','self_workshop_id'];
 function now(){return new Date().toISOString();}
 function multiUser(){return PropertiesService.getScriptProperties().getProperty('MULTI_USER_MODE')==='true';}
 function props(){
@@ -44,15 +46,23 @@ function snapshotCells(sheet:any,width:number,title:string):any[][]{
  }}}
  return Array.from({length:lastRow+1},(_,r)=>Array.from({length:width},(_,c)=>rows[r]?.[c]??''));
 }
-export function readState(sheetId:string):State{
- // Read values and checksum together through the same API used for writes.
- // SpreadsheetApp can retain stale values after an Advanced Sheets API write.
- const snapshot=Sheets.Spreadsheets.get(sheetId,{ranges:[...tables.map(t=>`'${t}'`),"'_Integrity'!A1"],includeGridData:true,fields:'sheets(properties(title),data(startRow,startColumn,rowData(values(userEnteredValue))))'});
- const s={schema_version:1} as State;const all:unknown[]=[];
- for(const t of tables){const sheet=snapshot.sheets?.find((x:any)=>x.properties?.title===t)??fail('Speichertabelle fehlt: '+t);const normalized=snapshotCells(sheet,columns[t].length,t);if(canonical(normalized[0])!==canonical(columns[t]))fail('Spalten oder Speicherversion verändert: '+t);all.push({t,values:normalized});(s[t] as unknown[]) = normalized.slice(1).filter((r:any[])=>r[0]).map((r:any[])=>Object.fromEntries(columns[t].flatMap((k,i)=>{const v=r[i];if(v===''&&optionalFields.includes(k))return [];return [[k,v===''?null:jsonFields.includes(k)?JSON.parse(v):numberFields.includes(k)?Number(v):booleanFields.includes(k)?v===true||v==='true':String(v)]];})));}
- const integritySheet=snapshot.sheets?.find((x:any)=>x.properties?.title==='_Integrity');const integrity=integritySheet?snapshotCells(integritySheet,1,'_Integrity')[0]?.[0]:undefined;if(integrity!==hash(canonical(all)))fail('Direkte Tabellenänderung erkannt. Akte wurde zur Prüfung gesperrt; Original sichern und dokumentierten Wiederherstellungsweg verwenden.');validateState(s);return s;
+export function readState(sheetId:string):State{return readStore(sheetId).state;}
+function readStore(sheetId:string):{state:State;legacy:boolean}{
+ const snapshot=Sheets.Spreadsheets.get(sheetId,{ranges:[...tables.map(t=>"'"+t+"'"),"'_Integrity'!A1"],includeGridData:true,fields:'sheets(properties(title),data(startRow,startColumn,rowData(values(userEnteredValue))))'});
+ const s={schema_version:1} as State,all:unknown[]=[];let legacy=false;
+ for(const t of tables){
+  const sheet=snapshot.sheets?.find((x:any)=>x.properties?.title===t)??fail('Speichertabelle fehlt: '+t),cells=snapshotCells(sheet,columns[t].length,t),header=[...(cells[0]??[])];
+  while(header.length&&header[header.length-1]==='')header.pop();
+  const current=canonical(header)===canonical(columns[t]),old=canonical(header)===canonical(legacyColumns[t]);if(!current&&!old)fail('Spalten oder Speicherversion verändert: '+t);
+  const fields=current?columns[t]:legacyColumns[t];if(!current){legacy=true;if(cells.some(row=>row.slice(fields.length).some(v=>v!=='')))fail('Spalten oder Speicherversion verändert: '+t);}
+  const normalized=cells.map(row=>row.slice(0,fields.length));all.push({t,values:normalized});
+  (s[t] as unknown[])=normalized.slice(1).filter(row=>row[0]).map(row=>Object.fromEntries(fields.flatMap((k,i)=>{const v=row[i];if(v===''&&optionalFields.includes(k))return [];return [[k,v===''?null:jsonFields.includes(k)?JSON.parse(v):numberFields.includes(k)?Number(v):booleanFields.includes(k)?v===true||v==='true':String(v)]];})));
+ }
+ const integritySheet=snapshot.sheets?.find((x:any)=>x.properties?.title==='_Integrity'),integrity=integritySheet?snapshotCells(integritySheet,1,'_Integrity')[0]?.[0]:undefined;
+ if(integrity!==hash(canonical(all)))fail('Direkte Tabellenänderung erkannt. Akte wurde zur Prüfung gesperrt; Original sichern und dokumentierten Wiederherstellungsweg verwenden.');
+ validateState(s);return {state:s,legacy};
 }
-export function writeState(sheetId:string,state:State){validateState(state);const ss=SpreadsheetApp.openById(sheetId),data=encode(state);const requests:any[]=[];for(const {t,values} of data){if(values.length>10000)fail('Mehr als 10.000 Zeilen pro Tabelle. Bitte Sicherung erstellen und Umfang prüfen.');const sheet=ss.getSheetByName(t);if(sheet.getMaxRows()<values.length)requests.push({appendDimension:{sheetId:sheet.getSheetId(),dimension:'ROWS',length:values.length-sheet.getMaxRows()}});requests.push({updateCells:{range:{sheetId:sheet.getSheetId()},rows:values.map(row=>({values:row.map(v=>({userEnteredValue:typeof v==='number'?{numberValue:v}:typeof v==='boolean'?{boolValue:v}:{stringValue:String(v)}}))})),fields:'userEnteredValue'}});}
+export function writeState(sheetId:string,state:State){validateState(state);const ss=SpreadsheetApp.openById(sheetId),data=encode(state);const requests:any[]=[];for(const {t,values} of data){if(values.length>10000)fail('Mehr als 10.000 Zeilen pro Tabelle. Bitte Sicherung erstellen und Umfang prüfen.');const sheet=ss.getSheetByName(t);if(sheet.getMaxColumns()<columns[t].length)requests.push({appendDimension:{sheetId:sheet.getSheetId(),dimension:'COLUMNS',length:columns[t].length-sheet.getMaxColumns()}});if(sheet.getMaxRows()<values.length)requests.push({appendDimension:{sheetId:sheet.getSheetId(),dimension:'ROWS',length:values.length-sheet.getMaxRows()}});requests.push({updateCells:{range:{sheetId:sheet.getSheetId()},rows:values.map(row=>({values:row.map(v=>({userEnteredValue:typeof v==='number'?{numberValue:v}:typeof v==='boolean'?{boolValue:v}:{stringValue:String(v)}}))})),fields:'userEnteredValue'}});}
  requests.push({updateCells:{range:{sheetId:ss.getSheetByName('_Integrity').getSheetId(),startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:1},rows:[{values:[{userEnteredValue:{stringValue:hash(canonical(data))}}]}],fields:'userEnteredValue'}});
  Sheets.Spreadsheets.batchUpdate({requests},sheetId);
 }
@@ -77,7 +87,8 @@ export function dispatch(action:string,arg:any={}):any{guard();if(typeof arg==='
  if(action==='daily'){daily();return {ok:true};}
  const r=resources();
  return locked(()=>{
- const s=readState(r.sheet);
+ const {state:s,legacy}=readStore(r.sheet);
+ if(legacy&&['createVehicle','smoke','upload','commit','edit','odometer','completeReminder','attachDocument'].includes(action)){backup(s,r);writeState(r.sheet,s);}
  switch(action){
  case 'read':return {state:s,status:status()};
  case 'createVehicle':{const next=addVehicle(s,arg,now());if(next!==s)writeState(r.sheet,next);return {ok:true};}
@@ -101,12 +112,12 @@ export function dispatch(action:string,arg:any={}):any{guard();if(typeof arg==='
  }
  });
 }
-function status(){const p=props();return {account_email:p.getProperty('OWNER_EMAIL'),last_check:p.getProperty('LAST_CHECK'),last_backup:p.getProperty('LAST_BACKUP'),last_error:p.getProperty('LAST_ERROR')||p.getProperty('LAST_MAIL_ERROR'),remaining_mail_quota:MailApp.getRemainingDailyQuota(),trigger_installed:multiUser()?false:ScriptApp.getProjectTriggers().some((x:any)=>x.getHandlerFunction()==='dailyOwnerTask')};}
+function status(){const p=props();return {features:{capture:1,gallery:1},account_email:p.getProperty('OWNER_EMAIL'),last_check:p.getProperty('LAST_CHECK'),last_backup:p.getProperty('LAST_BACKUP'),last_error:p.getProperty('LAST_ERROR')||p.getProperty('LAST_MAIL_ERROR'),remaining_mail_quota:MailApp.getRemainingDailyQuota(),trigger_installed:multiUser()?false:ScriptApp.getProjectTriggers().some((x:any)=>x.getHandlerFunction()==='dailyOwnerTask')};}
 function mailAddress(){const p=props(),address=p.getProperty('REMINDER_EMAIL'),owner=p.getProperty('OWNER_EMAIL');if(!address||address.toLowerCase()!==owner.toLowerCase())fail('REMINDER_EMAIL muss die bestätigte Eigentümeradresse sein.');return address;}
 function sendTestMail(){if(MailApp.getRemainingDailyQuota()<1)fail('E-Mail-Tageskontingent verbraucht.');MailApp.sendEmail({to:mailAddress(),subject:'Fahrzeugakte · Testmail',body:'Die Testmail wurde ausdrücklich in der Einrichtung angefordert.\n'+props().getProperty('APP_ORIGIN')+'/#/fahrzeug/termine'});}
 function backup(s:State,r:{sheet:string;folder:string;backup:string}){const folder=privateResource(DriveApp.getFolderById(r.backup));const originals=folder.getFoldersByName('Originale-nach-Hash');const target=originals.hasNext()?originals.next():folder.createFolder('Originale-nach-Hash');let count=0;for(const d of s.Documents.filter(d=>!d.missing&&d.sha256)){if(!target.getFilesByName(d.sha256).hasNext()){const original=privateResource(DriveApp.getFileById(d.drive_id));const bytes=original.getBlob().getBytes();if(hashBytes(Uint8Array.from(bytes,(x:number)=>x&255))!==d.sha256)fail('Backup: Prüfsumme fehlerhaft bei '+d.title);original.makeCopy(d.sha256,target);count++;}}
  const snapshot=folder.createFile(Utilities.newBlob(JSON.stringify({format:'vehicle-record-backup',schema_version:1,created_at:now(),state:s}), 'application/json','snapshot-'+now().replaceAll(':','-')+'.json'));
  const copies=folder.getFiles();const old:any[]=[];while(copies.hasNext()){const f=copies.next();if(f.getName().startsWith('snapshot-'))old.push(f);}old.sort((a,b)=>b.getDateCreated().getTime()-a.getDateCreated().getTime());for(const f of old.slice(s.Settings[0].backup_retention))if(f.getId()!==snapshot.getId())f.setTrashed(true);props().setProperty('LAST_BACKUP',now());return {ok:true,new_originals:count,snapshot_id:snapshot.getId()};}
-export function daily(){guard(true);try{const r=resources(true);locked(()=>{const s=readState(r.sheet),today=Utilities.formatDate(new Date(),'Europe/Berlin','yyyy-MM-dd'),odo=currentOdometer(s);const pending=s.Reminders.filter(x=>x.email_enabled&&!x.voided&&['due','soon'].includes(dueStatus(x,today,odo?.km??null))).filter(x=>!s.NotificationLog.some(n=>n.key===`${x.id}:${x.due_date}:${x.due_odometer_km}:${dueStatus(x,today,odo?.km??null)}`&&['sent','sending','uncertain'].includes(n.status)));
+export function daily(){guard(true);try{const r=resources(true);locked(()=>{const {state:s,legacy}=readStore(r.sheet);if(legacy){backup(s,r);writeState(r.sheet,s);}const today=Utilities.formatDate(new Date(),'Europe/Berlin','yyyy-MM-dd'),odo=currentOdometer(s);const pending=s.Reminders.filter(x=>x.email_enabled&&!x.voided&&['due','soon'].includes(dueStatus(x,today,odo?.km??null))).filter(x=>!s.NotificationLog.some(n=>n.key===`${x.id}:${x.due_date}:${x.due_odometer_km}:${dueStatus(x,today,odo?.km??null)}`&&['sent','sending','uncertain'].includes(n.status)));
  if(s.Settings[0].email_enabled&&pending.length){if(MailApp.getRemainingDailyQuota()<1)fail('Mail-Kontingent verbraucht.');const address=mailAddress();const entries=pending.map(x=>{const w=s.Work.find(w=>w.id===x.basis_work_ref||w.id===x.completed_work_id);return `${x.title}\nFällig: ${x.due_date??'Datum offen'} / ${x.due_odometer_km??'km offen'} km\nVorlauf: ${x.lead_days??30} Tage / ${x.lead_km??1000} km\nKilometer bestätigt: ${odo?odo.km+' km am '+odo.date:'unbekannt'}\n${props().getProperty('APP_ORIGIN')}/#/fahrzeug/termine?entry=${encodeURIComponent(x.id)}\n\nFür ChatGPT kopieren:\n${researchPrompt(x,s.Vehicles[0],w,s.Settings[0].prompt_templates[templateKey(x.title)])}`;});const logs=pending.map(x=>({...meta('mail-'+Utilities.getUuid(),now()),key:`${x.id}:${x.due_date}:${x.due_odometer_km}:${dueStatus(x,today,odo?.km??null)}`,status:'sending' as const,message:'Versand begonnen; bei Abbruch Ausgang unklar.'}));s.NotificationLog.push(...logs);writeState(r.sheet,s);try{MailApp.sendEmail({to:address,subject:'Fahrzeugakte · '+pending.length+' Wartungshinweis(e)',body:vehicleName(s.Vehicles[0])+'\n\n'+entries.join('\n\n---\n\n')});for(const log of logs){(log as any).status='sent';log.message='MailApp hat den Versand bestätigt. Zustellung nicht garantiert.';}}catch{props().setProperty('LAST_MAIL_ERROR','E-Mail-Versandausgang unklar; Versandprotokoll prüfen.');for(const log of logs){(log as any).status='uncertain';log.message='Versandausgang unklar. Keine automatische Wiederholung.';}}writeState(r.sheet,s);}
  props().setProperty('LAST_CHECK',now());props().deleteProperty('LAST_ERROR');backup(s,r);});}catch(error){props().setProperty('LAST_ERROR',error instanceof Error?error.message:'Automationsfehler');throw error;}}

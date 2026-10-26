@@ -46,3 +46,9 @@ Der Helfer prüft sämtliche geforderten Originale und Hashes, verweigert fehlen
 ## Nachgewiesene und offene Prüfung
 
 Automatisierte Tests prüfen Wiederherstellung in neue simulierte Google-Ressourcen mit neuen Datei-IDs sowie unveränderten Beträgen, Hashes und Links. Ein ZIP-Rundlauf prüft Export-/Importer-Kompatibilität. Das ist kein Beweis für Kontoberechtigungen, echte Google-Quoten oder reale Browserdownloads; diese Tests werden in der Einrichtung mit dem Eigentümerkonto ergänzt.
+
+## Erweiterung um Galerie und Belegerkennung
+
+Standardfoto und Galerie verweisen weiterhin auf bestehende Fotodokumente. Werkstattprofile, historische Werkstattkopien und Positionspreise sind optionale interne Felder. Sie werden in neuen Sicherungen mitgeführt; alte vollständige Sicherungen ohne diese Felder lassen sich weiterhin in neue Ressourcen wiederherstellen.
+
+Vor der ersten Änderung eines bisherigen Tabellenlayouts prüft das Backend den alten Stand und seine ursprüngliche Prüfsumme. Es erstellt eine datierte Drive-Sicherung mit Originalkopien, bevor es die optionalen Spalten atomar ergänzt. Scheitert die Sicherung oder die Integritätsprüfung, beginnt keine Spaltenerweiterung. Bei einem abgewiesenen Tabellenbatch bleibt der alte Tabellenstand erhalten. Keine manuelle Ergänzung von Überschriften oder Neuberechnung von `_Integrity` ist erforderlich. Die lokal simulierten Umstellungs- und Restoretests prüfen auch die neuen Zusatzangaben; eine echte Wiederherstellung im Google-Konto bleibt gesondert zu testen.

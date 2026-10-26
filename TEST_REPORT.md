@@ -1,12 +1,12 @@
 # Testbericht
 
-Prüfstand der lokalen Abnahme: 26. Oktober 2026, Europe/Berlin. Lokale Umsetzung für **car.jurodak.com**. Bei diesen Tests wurde kein Google-Konto verbunden, keine echte Mail verschickt und keine Website veröffentlicht. Das Ziel-Repository **julianrdk/scala-fahrzeugakte** wurde vom Nutzer bereitgestellt; der jeweilige Online-Prüflauf ist unter GitHub Actions nachvollziehbar. Die nachfolgende Erweiterung um Tankstellenkarte und Eingabebeispiele wurde ausschließlich lokal vorbereitet.
+Prüfstand der lokalen Abnahme: 26. Oktober 2026, Europe/Berlin. Lokale Umsetzung für **car.jurodak.com**. Bei diesen Tests wurde kein Google-Konto verbunden, keine echte Mail verschickt und keine Website veröffentlicht. Das Ziel-Repository **julianrdk/scala-fahrzeugakte** wurde vom Nutzer bereitgestellt; der jeweilige Online-Prüflauf ist unter GitHub Actions nachvollziehbar. Galerie, Pinnwand, Werkstattprofile und lokale Belegerkennung wurden ausschließlich lokal vorbereitet. Commit, Push und Apps-Script-Veröffentlichung bleiben beim Nutzer.
 
 ## Automatisierte Prüfungen
 
-Vollständige lokale Prüfung einschließlich Tankstellensuche und Sitzungsadapter: **151 Tests in 10 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut.
+Vollständige lokale Prüfung einschließlich Galerie, Belegerkennung, Tankstellensuche und Sitzungsadapter: **194 Tests in 15 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut. Der Build prüft auch, dass OCR-Worker, Sprachdateien, Core-Varianten und Lizenztexte tatsächlich im Website-Artefakt liegen.
 
-`pnpm audit --json`: Die vorherige Prüfung vom 18. Oktober meldete nach Aktualisierung der Pakete **0 Schwachstellen**. Die erneute Registry-Abfrage am 26. Oktober scheiterte an `fetch failed`; ein aktueller Auditstand einschließlich Leaflet wird deshalb nicht behauptet. Exakte Versionen und Integritätshashes stehen im Lockfile.
+`pnpm audit --json` am 26. Oktober: zunächst vier Meldungen zur transitiven Bibliothek `fast-uri` 3.1.8. Nach kompatibler Aktualisierung auf 3.1.9 meldete die erneute Registry-Prüfung **0 bekannte Schwachstellen**, einschließlich der neuen PDF-/OCR-Abhängigkeiten. Exakte Versionen und Integritätshashes stehen im Lockfile. Ein Audit ersetzt keine vollständige Sicherheitsanalyse.
 
 | Bereich | Nachweis |
 | --- | --- |
@@ -27,6 +27,12 @@ Vollständige lokale Prüfung einschließlich Tankstellensuche und Sitzungsadapt
 | Google-Backend (simuliert) | Eigentümer/fehlende Identität, idempotentes Setup, benannte Spalten/stringValue, Integrität, atomarer Batch-Fehler, Uploadabbruch/Dateiwiederverwendung |
 | Automation (simuliert) | Ein Editortrigger, globale/regelförmige Aktivierung, Bündelung, Versandwiederholung unterdrückt, unklarer Ausgang, Kontingentfehler und ausdrückliche Testmail |
 | Wiederherstellung | Tatsächlicher ZIP/CSV-Rundlauf und simulierte neue Google-Ressourcen; neue Drive-IDs, gleiche Originalbytes, Hashes, Beträge und Links; fehlende Teile abgewiesen |
+| Galerie und Pinnwand | Auswahl bestehender Bilddokumente, Standard zuerst, stabile Sortierung, Rechnungsfotos ausgeschlossen; SSR mit 0, 1, 3, 10 und 11 Bildern sowie mobiler Begrenzung auf 4 |
+| Private Vorschauen | Höchstens zwei gleichzeitige Abrufe, Wiederverwendung innerhalb einer Sitzung, verworfene verspätete Antworten nach Abmeldung/Kontowechsel, Wiederholung eines fehlgeschlagenen Abrufs |
+| Belegvorschläge | Mehrseitiger Text, gültige/ungültige Datumsangaben, mehrdeutige Rechnungsbeträge, Netto/Brutto, Positionen und reale OCR-Textregression; keine erfundenen Nullbeträge |
+| Werkstätten und Preise | Eigenleistungsstandard nur aktiv, historische Kopie trotz Profiländerung, genaue Dezimalpreise, ganze Positions-Cent, unpassende Referenzen abgewiesen, Kosten einmal, Retry und Prototypnamen abgesichert; v1 weiterhin strikt |
+| Tabellenumstellung | Altes Layout ohne Schreibzugriff lesbar, Sicherung vor Umstellung, konstante IDs, Manipulation vor Sicherung abgewiesen, atomarer Fehler mit Wiederholung, Rastererweiterung im selben Batch, keine ignorierten neuen Zellen unter altem Header, Restore neuer Zusatzangaben |
+| CSV-Zusatzfelder | Optionale Positionspreise auch dann enthalten, wenn die erste Zeile noch das alte Feldset besitzt |
 
 **Simuliert bedeutet:** Die Tests führen den echten Backend-/Adaptercode gegen kontrollierte lokale Google-Service-Ersatzobjekte aus. Sie beweisen keine realen Google-Berechtigungen, Servicequoten oder Mailzustellung.
 
@@ -41,6 +47,22 @@ Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose
 Die Cloudflare-Anmeldung ist inzwischen eingerichtet und in der öffentlichen Website aktiviert. HTTPS, öffentliche Konfiguration, unauthentifizierte Sitzungsprüfung und Start der Anmeldung mit D1-State wurden live geprüft; der echte Google-Rücksprung meldete `GOOGLE_TOKEN`. Ursache im Code: `redirect:'error'` wird von Cloudflares workerd bereits vor dem Netzaufruf abgewiesen. Ein neuer Regressionstest reproduzierte den Abbruch; die Korrektur verwendet durchgehend `manual` und lehnt 3xx-Antworten ausdrücklich ab. Grundlage: [workerd-Implementierung](https://github.com/cloudflare/workerd/blob/main/src/workerd/api/http.c%2B%2B). Der vollständige echte Google-Login, Cookies nach Browserneustart, zweites Konto und Free-CPU-Limit mit 4-MiB-Originalen bleiben bis zur echten Abnahme offen. Tagesprüfungs-Worker ebenfalls noch ausstehend.
 
 ## Browserprüfung
+
+### Galerie, Pinnwand und Belegerkennung
+
+Die echte App wurde im getrennten lokalen Testmodus mit ausschließlich synthetischen Fahrzeugbildern und Belegen bei **1280 × 900** und **360 × 800** geprüft:
+
+- Erstes Bild groß, danach zehn weitere Bilder gemeinsam mit Auswahlvorschau gespeichert. Die Standardauswahl blieb durch neue Uploads unverändert. Desktop: zehn Bildkacheln und „+ 1 weitere“; mobil: vier Kacheln und „+ 7 weitere“.
+- Standardfoto auf ein Hochformatbild umgestellt, Seite neu geladen und Testakte erneut geöffnet: Auswahl blieb erhalten. Bilder werden vollständig im Rahmen dargestellt. Bild-Großansicht und Schließen geprüft.
+- Desktop-Textfläche auf ungefähr 27 Prozent begrenzt; mobile Anordnung mit Text oberhalb der Collage. Galerie einspaltig auf 360 Pixeln. Kein horizontaler Seitenüberlauf: `scrollWidth = clientWidth = 345` einschließlich Scrollbarabzug.
+- Digitale PDF mit zwei Seiten direkt gelesen, Seitenvorschau geprüft. Synthetische Scan-PDF und JPG-Belegfoto tatsächlich mit Tesseract.js gelesen. Datum 26.10.2026, Nummer RE-2026-42, Verkäufer, Rechnungsbetrag 72,59 Euro, Mengen 2 / 4,5, Teilenummern OF-42 / OL-5, Einzelpreise 12,50 / 8,00 und Netto-Positionsbeträge 25,00 / 36,00 erkannt. Eine als „|“ erkannte Einheit blieb leer. Ein zuvor erkannter Parserfehler bei der Trennung von Teilenummer und Preis wurde korrigiert und mit dem tatsächlichen OCR-Text als Regressionstest abgesichert.
+- Titel und Position manuell korrigiert und erneut ausgelesen: Korrekturen blieben erhalten. Erkennung eines Fotos abgebrochen und anschließend erfolgreich erneut gestartet. Ungültige PDF lieferte einen sichtbaren Lesefehler, die Felder blieben bearbeitbar. Eine passwortgeschützte PDF wurde nicht gesondert im Browser getestet.
+- Eigenleistungsprofil als Standard gespeichert; „selbst gemacht“ wählte es voraus. Eine Ausgabe und verknüpfte Arbeit gemeinsam mit Original gespeichert; Verkäufer und Werkstatt blieben getrennt. Tatsächliches Arbeitsdatum und Erledigung separat bestätigt. Historie und Detailansichten zeigten die Material-/Preisangaben und historische Werkstattkopie. Übersicht zählte insgesamt **72,59 Euro**, ohne zusätzliche Kosten für die Arbeit oder die Positionssummen.
+- Mobile Belegansicht: Vorschau unter den Feldern, kein Seitenüberlauf (`345/345`). Zusätzlich den **Vite-Produktionsbuild** auf eigener lokaler Origin geöffnet und eine Scan-PDF mit tatsächlich geladenem PDF-Worker, Tesseract-Core und mitgelieferten Sprachdaten erfolgreich ausgelesen; Rechnungsbetrag und Einzelpreise korrekt.
+
+Nachweise: [Pinnwand Desktop](docs/screenshots/pinnwand-desktop-lokal.png), [Pinnwand mobil](docs/screenshots/pinnwand-mobil-lokal.png), [Galerie](docs/screenshots/galerie-desktop-lokal.png), [PDF-Prüfansicht](docs/screenshots/beleg-pdf-desktop-lokal.png), [OCR-Prüfansicht](docs/screenshots/beleg-ocr-desktop-lokal.png), [Beleg mobil](docs/screenshots/beleg-mobil-lokal.png). Keine echten Fahrzeugfotos oder privaten Belege wurden für diese Nachweise veröffentlicht. Kein physisches Mobilgerät, zweites echtes Konto oder produktiver Google-Migrationslauf wurde damit geprüft.
+
+### Bisherige Browserprüfungen
 
 Am 26. Oktober wurde die neue Tankstellenansicht lokal bei **360 × 800** und **1280 × 900** geprüft. Die echte App zeigt den Haupttab und die interaktive Karte im getrennten Testmodus; dort werden bewusst keine Livepreise abgefragt. Eine zusätzliche, nicht veröffentlichte Vorschauseite verwendet dieselben Komponenten mit eindeutig gekennzeichneten synthetischen Tankstellen und Preisen. Geprüft wurden PLZ-Suchablauf, Kraftstoffauswahl, Nur-geöffnet-Filter, Preisreihenfolge, Kartenmarkierungen und das Öffnen eines Kartenpunkts durch Auswahl einer Listenkarte. Alle drei Kraftstoffpreise sowie fehlende Preise sind mobil lesbar. Kein horizontaler Seitenüberlauf (345 beziehungsweise 1265 CSS-Pixel nach Abzug der Scrollbar). Echte Standortfreigabe, Tankerkönig-Schlüssel und reale Anbieterantworten wurden dabei nicht getestet.
 
@@ -69,13 +91,13 @@ Nachweise: [Desktop im Testmodus](docs/screenshots/desktop-testmodus.png), [mobi
 | 7 | Ablehnung und Tokenmodell lokal geprüft; fremdes echtes Konto/Live-Ablauf erst nach Kontokonfiguration |
 | 8–10 | Automatisiert geprüft; HTML wird durch React als Text dargestellt |
 | 11 | ZIP-Rundlauf und neue simulierte Google-Ressourcen geprüft; echter Google-Restore offen |
-| 12 | Desktop/360-Pixel/Import/langer Name/Tastatur/Druckvorschau geprüft. Physisches Android und fertiger Browser-PDF-Probedruck offen. Tankstellen derzeit hilfreicher externer Link; integrierter Provider samt Karte/Ausfall-/Preisalter-Logik nicht aktiviert |
+| 12 | Desktop/360-Pixel/Import/langer Name/Tastatur/Druckvorschau geprüft. Galerie und lokale OCR zusätzlich wie oben geprüft. Physisches Android und fertiger Browser-PDF-Probedruck offen. Tankstellenkarte lokal geprüft; echte Anbieterabnahme nach Schlüsselfreischaltung offen |
 
 ## Noch vom Kontoinhaber zu erledigen
 
-Die kleinste konkrete Folge steht in [docs/EINRICHTUNG_DEIN_ZIEL.md](docs/EINRICHTUNG_DEIN_ZIEL.md) und ausführlich in [SETUP.md](SETUP.md): neues GitHub-Repository, DNS/HTTPS für car.jurodak.com, gemeinsames Standard-Cloud-Projekt, Eigentümer-Properties und MYSELF-API-Deployment, echter Lese-/Schreibdurchstich, Editortrigger, bewusst angeforderte Testmail, realer Export/Restore und PDF-Probedruck.
+Für diese Erweiterung: bestehenden vollständigen Export sichern, das vorhandene Apps Script als neue Version aktualisieren und die lokal geprüften Änderungen selbst committen/pushen. Die genaue Schrittfolge steht in [docs/GALERIE_UND_BELEGERKENNUNG.md](docs/GALERIE_UND_BELEGERKENNUNG.md). Repo, Domain und grundlegender Google-Durchstich sind bereits eingerichtet. Offene reale Kontotests bleiben zweite Google-Identität, dauerhafte Sitzung nach Browserneustart, Tagesprüfung, vollständiger Export/Restore und PDF-Probedruck.
 
-Das optionale Tankerkönig-/Kartenmodul ist nicht Teil der aktivierten Version; dafür werden weder Preise simuliert noch ein Key erfordert. Die Kernakte funktioniert unabhängig davon. Diese Grenzen sind keine erfolgreichen Produktivnachweise.
+Die lokale Tankstellenkarte funktioniert unabhängig von der Kernakte. Echte Preise benötigen die gesonderte Einrichtung in [docs/TANKSTELLENSUCHE.md](docs/TANKSTELLENSUCHE.md). Diese Grenzen sind keine erfolgreichen Produktivnachweise.
 
 ## Neutrale Oberfläche und Kontentrennung
 
