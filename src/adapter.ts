@@ -2,8 +2,8 @@ import {emptyState,clone,meta,commitImport,editEntity,completeReminder,hashBytes
 import type {State,UploadFile} from '../shared/types';
 import {addVehicle} from '../shared/vehicle';
 import {FuelSearchError,type FuelQuery,type FuelResult,type FuelStatus} from '../shared/fuel';
-export type Config={clientId:string;deploymentId:string;origin:string;authOrigin?:string};
-export interface Adapter{kind:'google'|'test';accountEmail?:string;accountId?:string;call<T=any>(action:string,arg?:any):Promise<T>;}
+export type Config={clientId?:string;deploymentId?:string;origin:string;authOrigin?:string;backend?:'google'|'cloudflare';apiOrigin?:string;clerkPublishableKey?:string};
+export interface Adapter{kind:'google'|'cloudflare'|'test';thumbnail?:(doc:import('../shared/types').Doc)=>Promise<Blob>;accountEmail?:string;accountId?:string;call<T=any>(action:string,arg?:any):Promise<T>;}
 import {scopes} from '../shared/google-scopes';
 export {scopes};
 export class SignInRequired extends Error {}
@@ -11,12 +11,12 @@ declare global{interface Window{google:any;}}
 export class GoogleAdapter implements Adapter{
  kind='google' as const;private token='';private expires=0;
  constructor(public config:Config){}
- ready(){return this.config.clientId.endsWith('.apps.googleusercontent.com')&&!this.config.deploymentId.includes('EINTRAGEN')&&this.config.origin===location.origin&&location.protocol==='https:';}
+ ready(){return typeof this.config.clientId==='string'&&typeof this.config.deploymentId==='string'&&this.config.clientId.endsWith('.apps.googleusercontent.com')&&!this.config.deploymentId.includes('EINTRAGEN')&&this.config.origin===location.origin&&location.protocol==='https:';}
  async loadLibrary(){if(window.google?.accounts?.oauth2)return;await new Promise<void>((resolve,reject)=>{const script=document.createElement('script');script.src='https://accounts.google.com/gsi/client';script.async=true;script.onload=()=>resolve();script.onerror=()=>reject(Error('Google-Anmeldung konnte nicht geladen werden. Internetverbindung prüfen.'));document.head.append(script);});}
  authorize(){if(!this.ready())return Promise.reject(Error('Einrichtung fehlt: eigene HTTPS-Domain, Google-Client-ID und API-Deployment-ID in config.json einsetzen.'));return new Promise<void>((resolve,reject)=>{if(!window.google?.accounts?.oauth2)return reject(Error('Anmeldebibliothek wird noch geladen. Bitte gleich erneut klicken.'));window.google.accounts.oauth2.initTokenClient({client_id:this.config.clientId,scope:scopes.join(' '),include_granted_scopes:false,error_callback:()=>reject(Error('Google-Anmeldung wurde geschlossen oder blockiert. Deine Eingaben bleiben erhalten.')),callback:(response:any)=>{if(response.error||!window.google.accounts.oauth2.hasGrantedAllScopes(response,...scopes))return reject(Error('Nicht alle benötigten Berechtigungen wurden erteilt.'));this.token=response.access_token;this.expires=Date.now()+Number(response.expires_in)*1000;resolve();}}).requestAccessToken({prompt:'select_account'});});}
  disconnect(){this.token='';this.expires=0;}
  async call<T=any>(action:string,arg:any={}):Promise<T>{if(!this.token||Date.now()>this.expires-360000){this.disconnect();throw new SignInRequired('Bitte mit Google erneut verbinden. Die Anmeldung ist abgelaufen oder läuft bald ab. Deine Eingaben bleiben erhalten.');}
-  let response:Response;try{response=await fetch(`https://script.googleapis.com/v1/scripts/${encodeURIComponent(this.config.deploymentId)}:run`,{method:'POST',headers:{Authorization:'Bearer '+this.token,'Content-Type':'application/json'},body:JSON.stringify({function:'scalaApi',parameters:[action,arg],devMode:false}),cache:'no-store',referrerPolicy:'no-referrer'});}catch{throw Error('Keine Serverbestätigung erhalten. Verbindung prüfen und denselben Speichervorgang wiederholen.');}
+  let response:Response;try{response=await fetch(`https://script.googleapis.com/v1/scripts/${encodeURIComponent(this.config.deploymentId??'')}:run`,{method:'POST',headers:{Authorization:'Bearer '+this.token,'Content-Type':'application/json'},body:JSON.stringify({function:'scalaApi',parameters:[action,arg],devMode:false}),cache:'no-store',referrerPolicy:'no-referrer'});}catch{throw Error('Keine Serverbestätigung erhalten. Verbindung prüfen und denselben Speichervorgang wiederholen.');}
   return scriptResult(response,()=>this.disconnect());
  }
 }

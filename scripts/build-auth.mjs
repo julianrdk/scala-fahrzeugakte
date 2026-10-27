@@ -5,6 +5,7 @@ await build({entryPoints:['auth/src/worker.ts'],bundle:true,outfile:'auth/dist/_
 mkdirSync('auth/scheduler-dist',{recursive:true});
 await build({entryPoints:['auth/src/scheduler.ts'],bundle:true,outfile:'auth/scheduler-dist/scheduler.js',format:'esm',platform:'browser',target:'es2022',minify:false});
 copyFileSync('auth/scheduler.example.toml','auth/scheduler-dist/wrangler.example.toml');
+copyFileSync('auth/cloudflare-scheduler.example.toml','auth/scheduler-dist/wrangler.cloudflare.example.toml');
 writeFileSync('auth/dist/_routes.json',JSON.stringify({version:1,include:['/*'],exclude:[]})+'\n');
 writeFileSync('auth/dist/index.html','<!doctype html><html lang="de"><meta charset="utf-8"><title>Fahrzeugakte Anmeldung</title><p>Anmeldedienst.</p></html>\n');
 console.log('Cloudflare-Pages-Anmeldedienst gebaut. Noch keine Bereitstellung oder Kontoverbindung.');

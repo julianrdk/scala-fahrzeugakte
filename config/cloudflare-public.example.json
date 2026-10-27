@@ -1,0 +1,6 @@
+{
+  "backend": "cloudflare",
+  "origin": "https://car.jurodak.com",
+  "apiOrigin": "https://auth.jurodak.com",
+  "clerkPublishableKey": "pk_live_BEI_CLERK_ABLESEN"
+}

@@ -4,6 +4,24 @@ Speicherversion 1. Format `vehicle-record-import`, Importversion 1. Der wortglei
 
 ## Struktur
 
+### Neuer Cloudflare-Speicher
+
+Das Fachmodell unten bleibt Speicherversion 1. `DATA_DB` bindet die neue Datenbank **`fahrzeugakte-daten`**. In `record_entities` liegt jede Fachzeile separat unter `(owner, generation, kind, id)` mit ihrem JSON-Inhalt und ihrer fachlichen Revision. Der Server nimmt `owner` ausschließlich aus einer mit dem offiziellen Clerk-Backend-SDK geprüften Sitzung; Aussteller und erlaubte Website sind fest konfiguriert. Vom Browser gelieferte Kontoangaben werden nicht als Identität verwendet.
+
+`record_accounts` enthält die aktive Generation, Kontorevision, bestätigte Konto-Adresse, Sperre und Tageslaufstatus. Ein D1-Trigger prüft die erwartete Kontorevision am Anfang jedes Änderungsbatches. Geänderte Zeilen, Löschungen und Revision werden in einem atomaren `batch` angewendet. Bestätigte Vorgänge und Fingerprints aus `Operations` verhindern doppelte Kosten bei Wiederholung nach Antwortverlust. Der Schreibaufruf liefert den bestätigten Aktenstand; ein unmittelbar folgendes `read` des Adapters benötigt keinen zweiten Netzaufruf.
+
+`FILES` bindet einen privaten R2-Bucket. Schlüssel werden serverseitig aus Clerk-ID, Rolle und Hash gebildet. `record_objects` protokolliert reservierte und bestätigte Originale, Vorschauen und Snapshots. D1-Trigger reservieren atomar höchstens **1.000.000.000 Byte je Konto und 8.000.000.000 Byte insgesamt**. Fehlgeschlagene Uploads behalten ihre vorsorgliche Reservierung; Wiederholung verwendet sie wieder. Die App löscht keine Originale automatisch.
+
+Originale bleiben auf 4 MiB begrenzt. MIME-Signatur, Größe und SHA-256 werden vor Speicherung geprüft; R2 erhält zusätzlich die SHA-256 als Integritätsbedingung des Schreibvorgangs. Erst nach bestätigtem R2-Schreiben wird der Nachweis `ready`. Die API verändert Originale anschließend nicht. Commit, Wiederherstellung und tägliche Snapshots prüfen diese Nachweise gesammelt in D1; Downloads und ZIP-Export prüfen die tatsächlichen Bytes erneut. Manuelle Änderungen oder Löschungen im R2-Dashboard gehören nicht zum normalen Betrieb und werden nicht durch tägliches erneutes Herunterladen aller Originale abgesichert.
+
+Für Bilder wird getrennt ein WebP mit maximal 640 Pixeln Kantenlänge und 128 KiB gespeichert. Pinnwand und Galerie laden nur diese Vorschauen mit höchstens zwei gleichzeitigen Abrufen. Ein kontogetrennter IndexedDB-Cache übersteht Neuladen; Abmeldung und Kontowechsel verwerfen ihn zusammen mit dargestellten Daten, Entwürfen und Bild-URLs. Das ist keine Offline-Bearbeitung. Beim Einstieg werden Fachzeilen und Dokumentmetadaten gemeinsam geladen, keine Originaldateien.
+
+`record_restores` ordnet wiederholte Übernahmen desselben Standes derselben separaten Generation zu. IDs, Preise, historische Werkstattkopien und Standardfoto bleiben erhalten. Originalverweise werden erst nach bestätigten Uploads ersetzt; die aktive Generation ändert sich erst nach Prüfung und ausdrücklicher Bestätigung. Die bisherigen Google-Ressourcen bleiben erhalten.
+
+Clerk verwaltet Passwörter und Sitzungen. Nur eingeladene Konten erhalten Zugang, wenn der verbindliche Invite-only-Modus in Clerk eingerichtet ist. Einladungs-/Passwortmails kommen von Clerk, Wartungshinweise über Resend an die frisch geprüfte bestätigte Konto-Adresse. Die vorhandene Tankstellen-Datenbank bleibt separat als `DB` gebunden. Kein Google-Token ist im normalen Cloudflare-Datenweg erforderlich.
+
+### Gemeinsame Fachzeilen
+
 Alle Fachzeilen besitzen `id`, `vehicle_id`, `revision`, Zeitstempel sowie getrennte Kennzeichen `archived` und `voided`. Referenzen verwenden IDs, niemals Zeilennummern. Eine Fahrzeuginstanz ist zurzeit aktiv; `vehicle_id` und die separate Vehicles-Tabelle erlauben später eine ausdrücklich implementierte Mehrfahrzeugmigration. Diese Version erzwingt bei Wiederherstellung genau ein Fahrzeug.
 
 | Tabelle | Normale benannte Spalten / Bedeutung |
@@ -22,9 +40,9 @@ Alle Fachzeilen besitzen `id`, `vehicle_id`, `revision`, Zeitstempel sowie getre
 | Odometer | Explizit bestätigte datierte Kilometerstände |
 | NotificationLog | Hinweis-Fingerprint, Versandstatus und nachvollziehbarer Ausgang |
 | FavoriteStations | Vorbereitete Struktur; integrierte Provider-/Kartenfunktion nicht aktiv |
-| _Integrity | Prüfsumme des vollständigen normalisierten Tabellenstands; technische Änderungsprüfung |
+| _Integrity (nur Google-Backend) | Prüfsumme des vollständigen normalisierten Tabellenstands; technische Änderungsprüfung |
 
-Nur strukturierte Detailfelder (Materiallisten, Referenzlisten, optionale Tank-/Umbauangaben, Vorher-/Nachher-Daten) sind JSON in einer benannten Zelle. Hauptdaten sind lesbare einzelne Spalten. `null` wird als leere Zelle gespeichert; optionale Felder werden beim Lesen entsprechend behandelt. Keine Formeln werden aus Importtext erzeugt: Sheets-`stringValue` schreibt Text ausdrücklich als Text. CSV-Exporte entschärfen zusätzlich Formelinjektion.
+Im bisherigen Google-Backend sind strukturierte Detailfelder (Materiallisten, Referenzlisten, optionale Tank-/Umbauangaben, Vorher-/Nachher-Daten) JSON in einer benannten Zelle. Hauptdaten sind lesbare einzelne Spalten. `null` wird als leere Zelle gespeichert; optionale Felder werden beim Lesen entsprechend behandelt. Sheets-`stringValue` schreibt Text ausdrücklich als Text. D1 verwendet stattdessen einzelne Fachdatensätze. CSV-Exporte entschärfen in beiden Betriebsarten Formelinjektion.
 
 ## Geld und Arbeiten
 
@@ -54,7 +72,7 @@ Gleicher Vorgang liefert sein früheres Ergebnis. Ein deterministischer kanonisc
 
 Bearbeitung verlangt die gelesene Revision. Nach einer Änderung durch Gerät A wird der alte Stand von Gerät B abgewiesen. Fehlende Serverbestätigung bleibt Fehler; keine Erfolgsmeldung vor bestätigtem Ergebnis. Ein Nachladen nach erfolgreichem Commit kann ebenfalls scheitern: Retry liefert dann den vorhandenen Vorgang, statt nochmals zu buchen.
 
-## Direkte Tabellenänderungen und Migration
+## Direkte Google-Tabellenänderungen und Migration
 
 Manuelles Ändern der Sheets ist kein paralleler Standardworkflow. Header-, Daten- und Formelprüfung sowie die gemeinsam gespeicherte Integritätskennung erkennen direkte Änderungen. Die Akte sperrt weitere Aktionen bei Abweichung. Kein automatisches Neu-Hashen ungeprüfter Nutzereingriffe; stattdessen unveränderte Sicherung in neue Ressourcen wiederherstellen.
 
@@ -77,10 +95,10 @@ Der bestätigte Speichervorgang darf neben dem unveränderten Importpaket einen 
 
 ## Grenzen und Privatsphäre
 
-Frontend-Routen verwenden Hashes und funktionieren damit bei GitHub Pages auch nach Neuladen. Nur App-Assets und öffentliche Google-Verbindungs-IDs werden veröffentlicht. Browser-Tokens bleiben ausschließlich im Speicher. Private Dokumente werden nicht durch Service Worker gecacht. Der ausdrücklich gewählte Testmodus hat einen getrennten IndexedDB-Namensraum und sendet nichts an Google.
+Frontend-Routen verwenden Hashes und funktionieren damit bei GitHub Pages auch nach Neuladen. Nur App-Assets und öffentliche Verbindungswerte werden veröffentlicht. Clerk verwaltet seine eigene Sitzung, der neue Adapter verwendet kurzlebige Bearer-Tokens ohne eigene Passwortablage. Private Dokumente werden nicht durch Service Worker gecacht; kleine Vorschauen verwenden den oben beschriebenen privaten Cache. Der ausdrücklich gewählte Testmodus hat einen getrennten IndexedDB-Namensraum und sendet nichts an Google oder Clerk.
 
 Apps Script prüft aktive und effektive Eigentümeridentität und private konfigurierte Ressourcen. Fehlende Identität, fremder Eigentümer, Freigaben, veränderte Originaldateien oder Integritätsabweichungen führen zu Fehlern. Ein Backup auf demselben Konto ist kein Schutz gegen Kontoverlust.
 
-## Getrennte Konten
+## Getrennte Google-Konten im bisherigen Modus
 
 Eine Speicherversion-1-Akte gehört genau einem Google-Konto und enthält derzeit ein Fahrzeug. Neue Akten beginnen mit einer reservierten leeren Fahrzeugzeile, die erst nach ausdrücklicher Eingabe als Fahrzeug angezeigt wird. Beim Mehrkontomodus entstehen separate Tabellen und Drive-Ordner je ausführendem Google-Nutzer. Ressourcen-, Restore- und Statuszuordnung liegen in Google UserProperties. Nur das ursprüngliche Eigentümerkonto verwendet weiterhin seine bisherigen global konfigurierten Ressourcen. Übergebene Nutzer-/Ressourcenkennungen wechseln niemals den Kontokontext. Cloudflare ordnet Sitzungen, verschlüsselte Google-Tokens und Tagesprüfjobs nach verifizierter Google-sub zu; keine Fahrzeugdatenbank in D1.

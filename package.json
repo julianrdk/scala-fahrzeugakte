@@ -17,6 +17,9 @@
     "package:source": "node scripts/package-source.mjs"
   },
   "dependencies": {
+    "@clerk/backend": "3.26.2",
+    "@clerk/localizations": "4.24.1",
+    "@clerk/react": "6.18.1",
     "@noble/hashes": "1.8.0",
     "@tesseract.js-data/deu": "1.0.0",
     "@tesseract.js-data/eng": "1.0.0",
@@ -25,8 +28,8 @@
     "leaflet": "1.9.4",
     "lucide-react": "0.468.0",
     "pdfjs-dist": "6.4.299",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.1.4",
+    "react-dom": "19.1.4",
     "tesseract.js": "7.0.0"
   },
   "devDependencies": {

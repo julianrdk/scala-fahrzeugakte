@@ -1,10 +1,10 @@
 # Fahrzeugakte
 
-Fahrzeugakte mit getrennten Google-Konten. Ein Fahrzeug pro Konto; Hersteller und Modell werden beim Hinzufügen angegeben. React/TypeScript/Vite als statische Oberfläche, Google Sheets für strukturierte Daten, Google Drive für unveränderte Originale und Google Apps Script für validierte Zugriffe und tägliche Aufgaben.
+Fahrzeugakte mit einem Fahrzeug pro Konto. Der neue, lokal vorbereitete Betrieb verwendet E-Mail/Passwort und Einladungen über Clerk, Cloudflare D1 für Einträge, privates R2 für Originale und Vorschauen sowie Resend für Wartungsmails. Handy und PC greifen nach Anmeldung auf dieselbe Akte zu. Internet ist erforderlich.
 
-Repository: [julianrdk/scala-fahrzeugakte](https://github.com/julianrdk/scala-fahrzeugakte), veröffentlicht unter **https://car.jurodak.com**. Der Nutzer hat den echten Google-Lese-/Schreibtest, den Testmail-Eingang sowie Beispieldokument-Upload/Öffnen/Download bestätigt. Der Cloudflare-Anmeldedienst ist eingerichtet und aktiviert. Dauerhafte Anmeldung nach Browserneustart, zweites echtes Konto, Tagesprüfungs-Worker und echte Wiederherstellung sind noch offen; siehe [Einrichtung der dauerhaften Anmeldung](docs/CLOUDFLARE_ANMELDUNG.md). Die neue Tankstellenkarte ist lokal vorbereitet; Livepreise benötigen die zusätzliche Einrichtung unten.
+Repository: [julianrdk/scala-fahrzeugakte](https://github.com/julianrdk/scala-fahrzeugakte), Zieldomain **https://car.jurodak.com**. Die bisherige öffentliche Google-Konfiguration bleibt erhalten, bis der Nutzer bewusst umstellt. Kontoeinrichtung, echte Datenübernahme, Commit, Push und Veröffentlichung stehen noch aus. Die vollständige Reihenfolge steht unter **[Eigene Konten einrichten](docs/EIGENE_KONTEN_EINRICHTEN.md)**. Google-Tabelle, Drive-Dateien und alte Sicherungen werden durch den Wechsel nicht gelöscht.
 
-Die echte Akte beginnt leer. **Testmodus öffnen** führt in einen getrennten, leeren IndexedDB-Speicher dieses Browsers. Keine Google-Verbindung wird simuliert, keine E-Mail versendet. Beispieldateien sind ausdrücklich Testdaten.
+Ein neues Konto beginnt leer und bietet ZIP-Übernahme oder neues Fahrzeug an. **Testmodus öffnen** führt weiterhin in einen getrennten IndexedDB-Speicher dieses Browsers. Er bestätigt weder Clerk- noch Google-Anmeldung und sendet keine E-Mails. Beispieldateien sind ausdrücklich Testdaten.
 
 ## Lokal starten
 
@@ -16,7 +16,7 @@ pnpm check
 pnpm dev
 ```
 
-Die ausgegebene lokale URL öffnen. Produktive Anmeldung ist absichtlich erst auf der konfigurierten eigenen HTTPS-Origin möglich. Lokal den ausdrücklich bezeichneten Testmodus verwenden.
+Die ausgegebene lokale URL öffnen. Für die Oberfläche ohne Kontokonfiguration den ausdrücklich bezeichneten Testmodus verwenden. Echte Clerk-Tests benötigen eine getrennte Development-Instanz und eine dafür konfigurierte lokale API; Produktionsschlüssel gehören ausschließlich in die vorgesehene Konfiguration.
 
 ## Enthalten
 
@@ -28,7 +28,9 @@ Die ausgegebene lokale URL öffnen. Produktive Anmeldung ist absichtlich erst au
 - Kostenlose lokale Belegerkennung mit PDF.js und Tesseract.js, Belegvorschau, bearbeitbaren Positionen und getrennten Rechnungs-/Arbeitsdaten. Code und Sprachdaten werden mit der Website bereitgestellt.
 - Werkstattprofile mit Eigenleistungsstandard und historischen Kopien im Arbeitseintrag; optionale Positionspreise ohne Änderung des JSON-Vertrags v1.
 - Datum-ODER-Kilometer-Fälligkeit, bestätigte Erledigung, Kalenderarithmetik, Mail-Bündelung und kopierbare Recherchetexte.
-- Atomare Tabellencommits, Sperre und Revisionen, datierte Sicherungen, ZIP/CSV-Export, Wiederherstellung in neue Ressourcen.
+- Atomare Revisionen und wiederholbare Speichervorgänge; D1 schreibt nur geänderte Datensätze und liefert den bestätigten Stand direkt zurück.
+- Kleine private Bildvorschauen, höchstens zwei gleichzeitige Abrufe und kontogetrennter Browsercache; Originale erst bei Großansicht oder Download.
+- Speicherreservierung mit 1 GB pro Konto und 8 GB insgesamt, tägliche Sicherungen, ZIP/CSV-Export und geprüfte Wiederherstellung in einen getrennten Speicherbereich.
 - A4-Serviceheft, Kostenübersicht und Verkaufsfassung; responsive Oberfläche und Startbildschirm-Manifest.
 - Eingabebeispiele als Platzhalter; unbekannte Angaben werden dadurch nicht vorausgefüllt oder gespeichert.
 - Eigener Hauptbereich Tankstellen mit OpenStreetMap-Karte, optionaler Standortfreigabe, deutscher PLZ-Suche, E5/E10/Diesel und Umkreisfilter. Livepreise über den geschützten Cloudflare-Dienst nach [einmaliger Einrichtung](docs/TANKSTELLENSUCHE.md); der externe Link bleibt verfügbar.
@@ -37,6 +39,9 @@ Die ausgegebene lokale URL öffnen. Produktive Anmeldung ist absichtlich erst au
 
 | Datei | Zweck |
 | --- | --- |
+| [docs/EIGENE_KONTEN_EINRICHTEN.md](docs/EIGENE_KONTEN_EINRICHTEN.md) | Neuer Betrieb: Clerk, D1, privates R2, Resend, DNS, ZIP-Übernahme und Freigabe |
+| [auth/data-schema.sql](auth/data-schema.sql) | Wiederholbares Schema für die neue D1-Datenbank `fahrzeugakte-daten` |
+| [config/cloudflare-public.example.json](config/cloudflare-public.example.json) | Öffentliche Platzhalter für die neue Website-Konfiguration |
 | [SETUP.md](SETUP.md) | Einrichtung ab Domain/Repository, kleinste nächste Schritte und Fehlerhilfe |
 | [docs/CLOUDFLARE_ANMELDUNG.md](docs/CLOUDFLARE_ANMELDUNG.md) | Kostenloser zusätzlicher Anmeldedienst, Sitzungscookie und Schrittfolge |
 | [docs/TANKSTELLENSUCHE.md](docs/TANKSTELLENSUCHE.md) | Kostenlosen Tankerkönig-Schlüssel eintragen, Datenbank ergänzen und Karte prüfen |
@@ -55,8 +60,10 @@ Nur diesen Projektordner in das Ziel-Repository übernehmen. Die vorhandenen Fah
 
 ## Quellaufteilung
 
-`src/`: Oberfläche und Adapter, `shared/`: Format und Fachlogik, `apps-script/src/`: Google-Backend, `auth/src/`: optionaler Cloudflare-Sitzungsdienst, `tests/`: Fach- und Adaptertests. `pnpm build` erzeugt `dist/` für GitHub Pages, `apps-script/dist/Code.js` plus Manifest und `auth/dist/` für Cloudflare Pages. Öffentliche Apps-Script-Einstiegspunkte werden nach dem Bundling angefügt und geprüft. `dist/` enthält keinen Backendcode.
+`src/`: Oberfläche und Adapter, `shared/`: Format und Fachlogik, `auth/src/v2/`: Clerk-API, D1/R2-Speicherung und Tagesaufgaben, `apps-script/src/`: weiterhin verfügbares Google-Backend, `tests/`: Fach- und Adaptertests. `pnpm build` erzeugt `dist/` für GitHub Pages, `auth/dist/` für die Cloudflare-API und `auth/scheduler-dist/` für den separaten Cron-Worker. Das bisherige Apps-Script-Bundle wird zur Kompatibilitätsprüfung ebenfalls gebaut. `dist/` enthält keinen Backendcode.
 
-`pnpm dev` und `pnpm build` erzeugen die ignorierten OCR-Assets unter `public/ocr/` aus den im Lockfile festgelegten Paketen. Belege werden im Browser ausgewertet; Originale erst nach Bestätigung hochgeladen. Die neuen optionalen Speicherspalten benötigen eine neue Version der bestehenden Apps-Script-Bereitstellung. Vor der automatischen Erweiterung wird die alte Integrität geprüft und eine datierte Sicherung angelegt. Schrittfolge: [Galerie und Belegerkennung einrichten](docs/GALERIE_UND_BELEGERKENNUNG.md).
+`pnpm dev` und `pnpm build` erzeugen die ignorierten OCR-Assets unter `public/ocr/` aus den im Lockfile festgelegten Paketen. Belege werden im Browser ausgewertet; Originale erst nach Bestätigung hochgeladen. Im neuen Cloudflare-Betrieb ist keine Apps-Script-Veröffentlichung nötig. Wer den bisherigen Google-Betrieb weiterverwendet, beachtet weiterhin die [Anleitung für die optionalen Tabellenspalten](docs/GALERIE_UND_BELEGERKENNUNG.md).
 
-Keine KI-API, keine ChatGPT-Anmeldung, keine automatische Dokumentübertragung an KI-Dienste. Originale werden ausschließlich über den autorisierten Datenadapter gespeichert. Keine Service-Worker-Caches oder Hintergrundsynchronisation. Der bisherige Adapter hält Google-Tokens nur im Arbeitsspeicher. Das Backend bleibt standardmäßig auf den bisherigen Eigentümer beschränkt. Für die gewünschte gemeinsame Website wird der Mehrkontomodus ausdrücklich aktiviert: Cloudflare ACCOUNT_MODE=multi, Apps Script MULTI_USER_MODE=true und das API-Manifest für angemeldete Nutzer. Jedes Konto erhält eigene private Google-Dateien und eigene UserProperties; die bisherigen Eigentümerdateien bleiben unverändert. Die HTTP-Anmeldefunktion und der separate Cron Worker verwenden dieselbe kontoabhängige D1-Zuordnung. Die vom Nutzer gewünschte optionale dauerhafte Sitzung hält Tokens verschlüsselt serverseitig in Cloudflare D1 und Google-Client-/Verschlüsselungsschlüssel als Cloudflare-Secrets; Google-Tokens gelangen damit nicht in den Browser. Erst die öffentliche Konfiguration `authOrigin` aktiviert diesen Adapter. Dabei werden Anfragen/Dateien durch Cloudflare zu Google geleitet; die zusätzlichen Datenverarbeitungs- und Einrichtungsdetails stehen in der Anleitung.
+Keine KI-API, keine ChatGPT-Anmeldung und keine automatische Dokumentübertragung an KI-Dienste. Originale werden ausschließlich über den angemeldeten Datenadapter gespeichert. Keine Offline-Bearbeitung oder Hintergrundsynchronisation. Clerk verwaltet Passwörter und Sitzungen; die App speichert keine eigenen Passwörter. Vorschauen liegen zusätzlich im kontogetrennten IndexedDB-Cache und werden beim Abmelden verworfen. Die öffentliche Konfiguration `backend=cloudflare` aktiviert den neuen Adapter; normale Aktenzugriffe benötigen dann keine Google-Aufrufe. Ladezeiten für Sitzungsprüfung, Aktenstart, Vorschauen und Speichern sind in den Einstellungen dieses Tabs prüfbar.
+
+Der bisherige Google-Betrieb bleibt für Export und Rückkehr verfügbar. Seine eigene Kontokonfiguration und Google-Tokenverwaltung sind ausschließlich in der [alten Anmeldeanleitung](docs/CLOUDFLARE_ANMELDUNG.md) beschrieben; sie sind keine Voraussetzung für den neuen Betrieb.

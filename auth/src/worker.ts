@@ -1,3 +1,6 @@
+import {handleV2} from './v2/api';
+import {daily as cloudDaily} from './v2/jobs';
+import type {V2Env} from './v2/types';
 import {scopes} from '../../shared/google-scopes';
 import {fuelBody,fuelStatus,searchFuel,FuelError} from './fuel';
 
@@ -6,7 +9,7 @@ interface Statement {
   first<T = Record<string, unknown>>(): Promise<T | null>;
   run(): Promise<unknown>;
 }
-export interface Env {
+export interface Env extends V2Env {
   DB: {prepare(sql: string): Statement; batch(statements: Statement[]): Promise<unknown>};
   APP_ORIGIN: string;
   AUTH_ORIGIN: string;
@@ -190,6 +193,9 @@ export function scriptBody(body: ReadableStream<Uint8Array> | null, action: stri
 }
 async function handle(request: Request, env: Env) {
   const url = new URL(request.url);
+  if(url.pathname.startsWith('/v2/'))return handleV2(request,env);
+  if(env.AUTH_BACKEND==='clerk'&&url.pathname==='/'&&request.method==='GET')return json(request,env,{service:'Fahrzeugakte API',provider:'clerk',version:2});
+  if(env.AUTH_BACKEND==='clerk')return json(request,env,{error:'Google-Anbindung ist nach dem Kontowechsel deaktiviert.'},410);
   if(url.pathname === '/' && request.method === 'GET') return json(request,env,{service:'Fahrzeugakte Anmeldung',version:5});
   if(!configured(env)) fail(503,'Anmeldedienst ist noch nicht vollständig eingerichtet.');
   if(url.origin !== env.AUTH_ORIGIN) fail(403,'Bitte die eingerichtete Anmeldeadresse verwenden.');
@@ -259,6 +265,7 @@ export function nextDailyCheck(at:number){
 // One account per tick keeps work small and lets each caller's Google identity own
 // the files and MailApp execution. Lease expiry permits recovery after worker aborts.
 export async function runScheduled(env:Env){
+ if(env.AUTH_BACKEND==='clerk')return cloudDaily(env);
  if(!configured(env))throw Error('Anmeldedienst ist nicht eingerichtet.');
  const at=Date.now();
  const claimed=await env.DB.prepare('UPDATE account_jobs SET lease_until=? WHERE owner_sub=(SELECT j.owner_sub FROM account_jobs j JOIN credentials c ON c.owner_sub=j.owner_sub WHERE j.next_run<=? AND j.lease_until<=? ORDER BY j.next_run LIMIT 1) AND lease_until<=? RETURNING owner_sub').bind(at+9*60000,at,at,at).first<{owner_sub:string}>();

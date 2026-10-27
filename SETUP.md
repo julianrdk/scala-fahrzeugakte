@@ -1,4 +1,4 @@
-> Für die inzwischen gewünschte gemeinsame Website mit getrennten Google-Konten gilt [CLOUDFLARE_ANMELDUNG.md](docs/CLOUDFLARE_ANMELDUNG.md). Die folgende Anleitung beschreibt den weiterhin verfügbaren bisherigen Einzelkontoweg.
+> Für den neuen Betrieb mit E-Mail/Passwort, Einladungen und Cloudflare-Speicher gilt **[Eigene Konten einrichten](docs/EIGENE_KONTEN_EINRICHTEN.md)**. Die folgende Anleitung beschreibt ausschließlich den bisherigen Google-Einzelkontoweg. Dafür hier keine neue Einrichtung beginnen.
 
 # Einrichtung – Schritt für Schritt
 

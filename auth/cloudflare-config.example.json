@@ -1,0 +1,22 @@
+{
+  "variables": {
+    "APP_ORIGIN": "https://car.jurodak.com",
+    "AUTH_ORIGIN": "https://auth.jurodak.com",
+    "AUTH_BACKEND": "clerk",
+    "CLERK_PUBLISHABLE_KEY": "pk_live_BEI_CLERK_ABLESEN",
+    "CLERK_ISSUER": "https://CLERK_FRONTEND_API_EINTRAGEN",
+    "GOOGLE_AUTOMATION_STOPPED": "false",
+    "MAIL_FROM": "Fahrzeugakte <hinweise@notify.jurodak.com>"
+  },
+  "secrets": {
+    "CLERK_SECRET_KEY": "NUR_BEI_CLOUDFLARE_EINTRAGEN",
+    "CLERK_JWT_KEY": "PEM_PUBLIC_KEY_AUS_CLERK",
+    "RESEND_API_KEY": "NUR_BEI_CLOUDFLARE_EINTRAGEN",
+    "TANKERKOENIG_API_KEY": "BESTEHENDEN_SCHLUESSEL_BEIBEHALTEN"
+  },
+  "bindings": {
+    "DATA_DB": "D1: fahrzeugakte-daten",
+    "FILES": "R2 privat: fahrzeugakte-originale",
+    "DB": "Bestehende D1-Datenbank fuer die Tankstellensuche"
+  }
+}

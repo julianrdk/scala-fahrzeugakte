@@ -1,5 +1,45 @@
 # Testbericht
 
+## Eigene Konten und Cloudflare-Speicher – 27. Oktober 2026
+
+Der neue Betrieb ist lokal vorbereitet. **236 Tests in 18 Dateien** bestehen, einschließlich aller 194 bisherigen Tests. TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Kompatibilitätsbuild, Cloudflare-API-/Cron-Build und Artefaktprüfung bestehen. Das öffentliche Bundle wird auch auf versehentliche Backend-Secret-Konfiguration geprüft. `pnpm audit --json` meldete am 27. Oktober **0 bekannte Schwachstellen**. Clerk-Abhängigkeiten sind exakt festgelegt; React/React DOM wurden kompatibel von 19.1.0 auf 19.1.4 aktualisiert.
+
+| Neuer Bereich | Tatsächlicher lokaler Nachweis |
+| --- | --- |
+| Clerk-Tokenprüfung | Offizielles Backend-SDK mit echten lokal erzeugten RSA-signierten Sitzungstokens; korrekter Aussteller und Website, Ablauf, fremde Origin, fehlende Anmeldung und gesperrtes Konto |
+| Erste Kontoanlage | SDK-Nutzerabruf als kontrollierte REST-Antwort; ausschließlich bestätigte primäre Adresse übernommen. Vorhandene Sitzungen benötigen keinen Clerk-/Google-Netzwerkaufruf für die normale Tokenprüfung |
+| Kontentrennung | Zwei synthetische Konten, getrennte Akten, fremde Original-/Vorschau-IDs und Uploadkennungen abgewiesen, keine Kontoübernahme durch `owner` im Anfragekörper, fremde Restore-ID gesperrt |
+| D1 | Echtes Node-SQLite mit dem neuen SQL-Schema, atomare Batches, Revisionenkonflikt ohne Überschreiben, Batch-Fehler ohne Teiländerung und Änderung nur betroffener Fachzeilen |
+| Wiederholung | Gleiches Importpaket/Vorgangskennung zählt Kosten einmal; unbestätigte Browser-Schreibzugriffe werden nicht automatisch wiederholt |
+| Dateien und Quoten | Binäre Dateiwege, SHA-256/Größenprüfung, beschädigte Downloadbytes abgewiesen, atomare Konto-/Gesamtgrenze auch bei gleichzeitigen Reservierungen, abgebrochenes R2-Schreiben mit wiederverwendbarer Reservierung |
+| Vorschauen | Kleine statische WebP-Abmessungen, Thumbnail-Wiederverwendung trotz anderem Browser-Encoder, private HTTP-Vorschau ohne gesamten Aktenabruf; Pinnwand fordert keinen Original-Endpunkt an |
+| Übernahme | Separater Speicherbereich, gesperrte Aktivierung bei fehlenden Originalen, gleiche IDs/Beträge/Links, exakte Positionspreise, historische Werkstattkopie und Standardfoto. Hundert Dokumente werden anhand gebündelter bestätigter Uploadnachweise geprüft |
+| Sicherung und Mail | Datierter privater Snapshot, bisherige Sicherung bleibt bei Quotenfehler erhalten; tatsächliche fällige Hinweise bleiben ohne Google-Abschaltbestätigung pausiert; Versand nur an frisch bestätigte Adresse, unklarer Ausgang nicht erneut versendet |
+| Browseradapter | Ein Bootstrap-Aufruf; bestätigtes Speichern liefert Zustand ohne vollständigen Nachladeaufruf; manuelles Neuladen verwirft alte Antwort; fehlendes/ungültiges Token beendet Sitzung, verspätete Antwort nach Abmeldung verworfen |
+| Veröffentlichung | Isoliert erzeugte Cloudflare-Konfiguration und Releaseprüfung ohne Google-Werte; Platzhalter und Development-Schlüssel für Produktion abgewiesen |
+
+Die Tests verwenden lokale SQLite- und R2-Ersatzobjekte. Externe Clerk-Nutzerabrufe und Resend-Antworten sind kontrolliert simuliert. Sie beweisen keine realen Kontoberechtigungen, Mailzustellung oder Cloudflare-Free-Laufzeit.
+
+### Browserprüfung des neuen Datenwegs
+
+Die echte Oberfläche und der neue Cloudflare-Adapter liefen gegen die lokale v2-HTTP-API mit signierten synthetischen Sitzungstokens, SQLite und einem lokalen Dateispeicher-Ersatz. Das ist ausdrücklich kein echter Clerk-Login. Geprüft wurden **1280 × 900** und **360 × 800**:
+
+- Vollständiges synthetisches ZIP mit einer Ausgabe, einer verknüpften Arbeit, elf Fahrzeugbildern und einem zweitseitigen PDF ausgewählt, kopiert, geprüft und ausdrücklich aktiviert. Die Übersicht zeigt unverändert **72,59 Euro**; das vorherige Hochformat-Standardfoto blieb erhalten.
+- Pinnwand mit zehn Bildern am Desktop und vier mobil; Standardfoto danach geändert und nach Neuladen wiedergefunden. Großansicht lud das Original über den getrennten binären Endpunkt. Mobile Breite: `scrollWidth = clientWidth = 345`; kein horizontaler Überlauf.
+- Stammdaten und Sicherungsaufbewahrung geändert; bestätigter Stand sofort angezeigt. Im HTTP-Protokoll folgte dem Schreibaufruf kein zusätzlicher Bootstrap. Erneutes Öffnen verwendete vorhandene Vorschauen.
+- Zweites synthetisches Konto begann ohne Bilder/Einträge, erhielt ein eigenes Fahrzeug und zeigte 0,00 Euro. Nach Rückkehr war die ursprüngliche Testakte unverändert mit Bildern, Kosten und gespeichertem Motorfeld vorhanden.
+- Private Speichernutzung, pausierter Mailstatus und die neue Ladezeiten-Anzeige in den Einstellungen geprüft.
+
+Beispielmessung des lokalen Browsers: **Aktenstart 27 ms, Speichern ohne Datei 84 ms, bereits gespeicherte Vorschauen 1–6 ms**. Lokale API-Verarbeitung: Bootstrap 1,1–11,8 ms, Speichern 2,8–3,3 ms, Thumbnail-Abruf 1,3–10,7 ms. Die synthetischen Vorschauen hatten etwa 4,2–5,6 kB. Das sind Entwicklungswerte ohne Internetlaufzeit; keine Zusicherung für produktive Cloudflare-Dienste. Anmeldung, Aktenstart, Bildvorschau und Speichern sind für die echte Abnahme getrennt in den Einstellungen messbar.
+
+Lokale Nachweise liegen unter `test-results/cloud-migration.png`, `cloud-desktop.png`, `cloud-mobile.png` und `cloud-metrics.json`. Diese synthetischen Prüfarbeitsdateien sind von Git ausgeschlossen.
+
+### Noch nach der Kontoeinrichtung abzunehmen
+
+Echte Clerk-Einladung und Passwortzurücksetzung, Anmeldung auf zwei physischen Geräten, Browserneustart und Sieben-Tage-Sitzungsablauf; private D1-/R2-Bindungen, Originalupload im realen Worker, Resend-Zustellung und Cronlauf; Übernahme der echten Google-ZIPs sowie Kosten-/Hashvergleich; tatsächliche Ladezeiten und Free-Kontingente im Cloudflare-Dashboard. Kontoeinrichtung, produktive Übernahme, Commit, Push und Veröffentlichung wurden nicht durchgeführt. Die bestehende öffentliche Google-Konfiguration, alle Google-Dateien und die produktiven Konten bleiben durch diese lokale Arbeit unverändert.
+
+## Bisheriger Prüfstand – Google, Galerie und OCR
+
 Prüfstand der lokalen Abnahme: 26. Oktober 2026, Europe/Berlin. Lokale Umsetzung für **car.jurodak.com**. Bei diesen Tests wurde kein Google-Konto verbunden, keine echte Mail verschickt und keine Website veröffentlicht. Das Ziel-Repository **julianrdk/scala-fahrzeugakte** wurde vom Nutzer bereitgestellt; der jeweilige Online-Prüflauf ist unter GitHub Actions nachvollziehbar. Galerie, Pinnwand, Werkstattprofile und lokale Belegerkennung wurden ausschließlich lokal vorbereitet. Commit, Push und Apps-Script-Veröffentlichung bleiben beim Nutzer.
 
 ## Automatisierte Prüfungen

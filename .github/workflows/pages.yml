@@ -28,12 +28,15 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GOOGLE_DEPLOYMENT_ID: ${{ vars.GOOGLE_DEPLOYMENT_ID }}
           AUTH_ORIGIN: ${{ vars.AUTH_ORIGIN }}
+          APP_BACKEND: ${{ vars.APP_BACKEND }}
+          API_ORIGIN: ${{ vars.API_ORIGIN }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       - run: pnpm check
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
   deploy:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.PAGES_DOMAIN != '' && vars.GOOGLE_CLIENT_ID != '' && vars.GOOGLE_DEPLOYMENT_ID != ''
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.PAGES_DOMAIN != '' && ((vars.APP_BACKEND == 'cloudflare' && vars.CLERK_PUBLISHABLE_KEY != '' && vars.API_ORIGIN != '') || (vars.APP_BACKEND != 'cloudflare' && vars.GOOGLE_CLIENT_ID != '' && vars.GOOGLE_DEPLOYMENT_ID != ''))
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -53,6 +56,9 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GOOGLE_DEPLOYMENT_ID: ${{ vars.GOOGLE_DEPLOYMENT_ID }}
           AUTH_ORIGIN: ${{ vars.AUTH_ORIGIN }}
+          APP_BACKEND: ${{ vars.APP_BACKEND }}
+          API_ORIGIN: ${{ vars.API_ORIGIN }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       - run: node scripts/validate-release.mjs
       - name: Auf GitHub Pages bereitstellen
         id: deployment
