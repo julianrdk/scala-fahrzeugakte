@@ -1,5 +1,6 @@
 {
-  "clientId": "642087309179-uoqjosp5sn8sjlj038v0fqva6q96hsdk.apps.googleusercontent.com",
-  "deploymentId": "AKfycby7KqIVJIPxkOdTjvUStd_p8qBAMv4KZsVO05qoQuKKEkw988_AsfBPU5Cd5iXS5ucG-w",
-  "origin": "https://car.jurodak.com"
+  "backend": "cloudflare",
+  "origin": "http://127.0.0.1:5173",
+  "apiOrigin": "/api",
+  "clerkPublishableKey": "CLERK_TEST_KEY_EINTRAGEN"
 }

@@ -1,148 +1,79 @@
-# Testbericht
+# Prüfbericht – Mehrere Fahrzeuge und bereinigte Cloudflare-Struktur
 
-## Eigene Konten und Cloudflare-Speicher – 27. Oktober 2026
+Stand: 28. Oktober 2026. Die Umsetzung und die folgenden Prüfungen erfolgten lokal. Produktive Kontoeinstellungen, Daten und Veröffentlichungen wurden nicht geändert. Commit und Push bleiben beim Nutzer. Die Freigabe der produktiven Umstellung steht noch aus.
 
-Der neue Betrieb ist lokal vorbereitet. **236 Tests in 18 Dateien** bestehen, einschließlich aller 194 bisherigen Tests. TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Kompatibilitätsbuild, Cloudflare-API-/Cron-Build und Artefaktprüfung bestehen. Das öffentliche Bundle wird auch auf versehentliche Backend-Secret-Konfiguration geprüft. `pnpm audit --json` meldete am 27. Oktober **0 bekannte Schwachstellen**. Clerk-Abhängigkeiten sind exakt festgelegt; React/React DOM wurden kompatibel von 19.1.0 auf 19.1.4 aktualisiert.
+## Bestandene Prüfungen
 
-| Neuer Bereich | Tatsächlicher lokaler Nachweis |
-| --- | --- |
-| Clerk-Tokenprüfung | Offizielles Backend-SDK mit echten lokal erzeugten RSA-signierten Sitzungstokens; korrekter Aussteller und Website, Ablauf, fremde Origin, fehlende Anmeldung und gesperrtes Konto |
-| Erste Kontoanlage | SDK-Nutzerabruf als kontrollierte REST-Antwort; ausschließlich bestätigte primäre Adresse übernommen. Vorhandene Sitzungen benötigen keinen Clerk-/Google-Netzwerkaufruf für die normale Tokenprüfung |
-| Kontentrennung | Zwei synthetische Konten, getrennte Akten, fremde Original-/Vorschau-IDs und Uploadkennungen abgewiesen, keine Kontoübernahme durch `owner` im Anfragekörper, fremde Restore-ID gesperrt |
-| D1 | Echtes Node-SQLite mit dem neuen SQL-Schema, atomare Batches, Revisionenkonflikt ohne Überschreiben, Batch-Fehler ohne Teiländerung und Änderung nur betroffener Fachzeilen |
-| Wiederholung | Gleiches Importpaket/Vorgangskennung zählt Kosten einmal; unbestätigte Browser-Schreibzugriffe werden nicht automatisch wiederholt |
-| Dateien und Quoten | Binäre Dateiwege, SHA-256/Größenprüfung, beschädigte Downloadbytes abgewiesen, atomare Konto-/Gesamtgrenze auch bei gleichzeitigen Reservierungen, abgebrochenes R2-Schreiben mit wiederverwendbarer Reservierung |
-| Vorschauen | Kleine statische WebP-Abmessungen, Thumbnail-Wiederverwendung trotz anderem Browser-Encoder, private HTTP-Vorschau ohne gesamten Aktenabruf; Pinnwand fordert keinen Original-Endpunkt an |
-| Übernahme | Separater Speicherbereich, gesperrte Aktivierung bei fehlenden Originalen, gleiche IDs/Beträge/Links, exakte Positionspreise, historische Werkstattkopie und Standardfoto. Hundert Dokumente werden anhand gebündelter bestätigter Uploadnachweise geprüft |
-| Sicherung und Mail | Datierter privater Snapshot, bisherige Sicherung bleibt bei Quotenfehler erhalten; tatsächliche fällige Hinweise bleiben ohne Google-Abschaltbestätigung pausiert; Versand nur an frisch bestätigte Adresse, unklarer Ausgang nicht erneut versendet |
-| Browseradapter | Ein Bootstrap-Aufruf; bestätigtes Speichern liefert Zustand ohne vollständigen Nachladeaufruf; manuelles Neuladen verwirft alte Antwort; fehlendes/ungültiges Token beendet Sitzung, verspätete Antwort nach Abmeldung verworfen |
-| Veröffentlichung | Isoliert erzeugte Cloudflare-Konfiguration und Releaseprüfung ohne Google-Werte; Platzhalter und Development-Schlüssel für Produktion abgewiesen |
+- 202 automatisierte Tests in 15 Dateien. Die aktuellen Fälle ersetzen die entfallenen Google-Laufzeitprüfungen und ergänzen die bestehenden Fach-, Galerie-, OCR- und Vertragsprüfungen.
+- TypeScript mit strict, noUnusedLocals und noUnusedParameters erfolgreich; Produktionsbuild für Website und gemeinsamen Worker erfolgreich.
+- Öffentliche Artefakte, lokale OCR-Dateien, Sicherheitsheader und ausschließliches /api-Routing geprüft. Kein Google-OAuth-Code, keine Backend-Secrets, keine Laufzeitkompilierung des JSON-Prüfers und kein synthetischer Testzugang im Produktionsbundle.
+- Wrangler-Worker-Dry-run und tatsächliche lokale Übersetzung der Pages Functions erfolgreich. Keine Veröffentlichung. Worker-Artefakt etwa 953 KiB, gzip etwa 142 KiB.
+- pnpm audit meldet am Prüftag 0 bekannte Sicherheitslücken.
+- ChatGPT-JSON-Vertrag v1 unverändert; bestehende Google-ZIPs bleiben lesbar. Historischer Prüfbericht: [27. Oktober](docs/PRUEFSTAND_2026_10_27.md).
 
-Die Tests verwenden lokale SQLite- und R2-Ersatzobjekte. Externe Clerk-Nutzerabrufe und Resend-Antworten sind kontrolliert simuliert. Sie beweisen keine realen Kontoberechtigungen, Mailzustellung oder Cloudflare-Free-Laufzeit.
+## Konten, Fahrzeuge und Schreibvorgänge
 
-### Browserprüfung des neuen Datenwegs
+Zwei synthetische Konten mit jeweils zwei Fahrzeugen. Geprüft sind Konto-/Fahrzeugzuordnung beim Lesen und Schreiben, fremde Dokument-/Upload-/Restore-IDs, tatsächliche RSA-signierte Tokens, Aussteller und Website, gesperrte und neue Konten, fehlende und abgelaufene Anmeldung. Die normale Prüfung eines vorhandenen Kontos benötigt keinen Clerk-Netzwerkaufruf.
 
-Die echte Oberfläche und der neue Cloudflare-Adapter liefen gegen die lokale v2-HTTP-API mit signierten synthetischen Sitzungstokens, SQLite und einem lokalen Dateispeicher-Ersatz. Das ist ausdrücklich kein echter Clerk-Login. Geprüft wurden **1280 × 900** und **360 × 800**:
+Bestätigt sind getrennte Revisionen, parallele Änderungen an unterschiedlichen Fahrzeugen, Konflikt und atomarer Rollback im selben Fahrzeug, Vorgangskennungen nach verlorenen Antworten sowie einmalige Kosten. Testmails und manuell angeforderte Sicherungen behalten ihre Kennungen ebenfalls bei Wiederholungen. Gemeinsame Werkstätten und historische Werkstattkopien, fahrzeugbezogene Kategorien und schreibgeschützte Archivierung sind geprüft.
 
-- Vollständiges synthetisches ZIP mit einer Ausgabe, einer verknüpften Arbeit, elf Fahrzeugbildern und einem zweitseitigen PDF ausgewählt, kopiert, geprüft und ausdrücklich aktiviert. Die Übersicht zeigt unverändert **72,59 Euro**; das vorherige Hochformat-Standardfoto blieb erhalten.
-- Pinnwand mit zehn Bildern am Desktop und vier mobil; Standardfoto danach geändert und nach Neuladen wiedergefunden. Großansicht lud das Original über den getrennten binären Endpunkt. Mobile Breite: `scrollWidth = clientWidth = 345`; kein horizontaler Überlauf.
-- Stammdaten und Sicherungsaufbewahrung geändert; bestätigter Stand sofort angezeigt. Im HTTP-Protokoll folgte dem Schreibaufruf kein zusätzlicher Bootstrap. Erneutes Öffnen verwendete vorhandene Vorschauen.
-- Zweites synthetisches Konto begann ohne Bilder/Einträge, erhielt ein eigenes Fahrzeug und zeigte 0,00 Euro. Nach Rückkehr war die ursprüngliche Testakte unverändert mit Bildern, Kosten und gespeichertem Motorfeld vorhanden.
-- Private Speichernutzung, pausierter Mailstatus und die neue Ladezeiten-Anzeige in den Einstellungen geprüft.
+Seitennavigation liefert stabile Seiten ohne Lücken. Historienfilter laufen über die gesamte Fahrzeughistorie; Belegfilter prüfen zugehörige Originale. Änderungen liefern kleine bestätigte Antworten. Verspätete Antworten nach Abmeldung, Fahrzeug- oder Ansichtswechsel werden verworfen.
 
-Beispielmessung des lokalen Browsers: **Aktenstart 27 ms, Speichern ohne Datei 84 ms, bereits gespeicherte Vorschauen 1–6 ms**. Lokale API-Verarbeitung: Bootstrap 1,1–11,8 ms, Speichern 2,8–3,3 ms, Thumbnail-Abruf 1,3–10,7 ms. Die synthetischen Vorschauen hatten etwa 4,2–5,6 kB. Das sind Entwicklungswerte ohne Internetlaufzeit; keine Zusicherung für produktive Cloudflare-Dienste. Anmeldung, Aktenstart, Bildvorschau und Speichern sind für die echte Abnahme getrennt in den Einstellungen messbar.
+## Lokale Cloudflare-Laufzeit und Last
 
-Lokale Nachweise liegen unter `test-results/cloud-migration.png`, `cloud-desktop.png`, `cloud-mobile.png` und `cloud-metrics.json`. Diese synthetischen Prüfarbeitsdateien sind von Git ausgeschlossen.
+Die HTTP-Aufrufe liefen in echtem lokalem workerd mit lokaler D1-Datenbank und privatem lokalem R2. Je Buchung gibt es eine verknüpfte Arbeit, ein Dokument und zwei Dokumentverknüpfungen. Datei-Originale werden beim Einstieg nicht geladen.
 
-### Noch nach der Kontoeinrichtung abzunehmen
+| Buchungen | Arbeiten | Dokumente | Einstieg ms | Einstieg Bytes | Änderung ms | Änderung Bytes |
+|---|---|---|---|---|---|---|
+| 100 | 100 | 100 | 89 | 58465 | 31 | 1813 |
+| 1000 | 1000 | 1000 | 81 | 58531 | 27 | 1821 |
+| 3000 | 3000 | 3000 | 97 | 58587 | 40 | 1822 |
 
-Echte Clerk-Einladung und Passwortzurücksetzung, Anmeldung auf zwei physischen Geräten, Browserneustart und Sieben-Tage-Sitzungsablauf; private D1-/R2-Bindungen, Originalupload im realen Worker, Resend-Zustellung und Cronlauf; Übernahme der echten Google-ZIPs sowie Kosten-/Hashvergleich; tatsächliche Ladezeiten und Free-Kontingente im Cloudflare-Dashboard. Kontoeinrichtung, produktive Übernahme, Commit, Push und Veröffentlichung wurden nicht durchgeführt. Die bestehende öffentliche Google-Konfiguration, alle Google-Dateien und die produktiven Konten bleiben durch diese lokale Arbeit unverändert.
+Das sind lokale Antwortzeiten einschließlich D1, keine Internet- oder produktiven CPU-Messwerte. Ziel unter zwei Sekunden lokal erreicht. Bei 1.000 Buchungen lag die vorherige kleine Einstellungsantwort bei rund 983 kB; die aktuelle kleine Fahrzeugänderung liefert etwa 1,8 kB. Die Änderungstypen unterscheiden sich; dies ist kein identischer Produktionsbenchmark. Rohdaten: test-results/runtime.json.
 
-## Bisheriger Prüfstand – Google, Galerie und OCR
+Die aktuellen [D1-Limits](https://developers.cloudflare.com/d1/platform/limits/) nennen unter anderem 500 MB pro kostenloser Datenbank und 50 Abfragen pro Worker-Aufruf; ein D1-Batch zählt dabei als eine Abfrage. Die tatsächliche CPU-Zeit, Datenbankgröße und weitere Kontingente müssen in der getrennten Cloudflare-Testumgebung vor Freigabe gemessen werden.
 
-Prüfstand der lokalen Abnahme: 26. Oktober 2026, Europe/Berlin. Lokale Umsetzung für **car.jurodak.com**. Bei diesen Tests wurde kein Google-Konto verbunden, keine echte Mail verschickt und keine Website veröffentlicht. Das Ziel-Repository **julianrdk/scala-fahrzeugakte** wurde vom Nutzer bereitgestellt; der jeweilige Online-Prüflauf ist unter GitHub Actions nachvollziehbar. Galerie, Pinnwand, Werkstattprofile und lokale Belegerkennung wurden ausschließlich lokal vorbereitet. Commit, Push und Apps-Script-Veröffentlichung bleiben beim Nutzer.
+## Sicherungen, Originale und Wiederherstellung
 
-## Automatisierte Prüfungen
+Geprüft sind alte vollständige Google-ZIPs, neue Fahrzeug- und Kontoarchive, fehlende/doppelte/manipulierte Teilnummern, falsche oder zusammengewürfelte Manifeste, defekte Prüfsummen, fehlende Originale, getrennte Vorbereitung und ausdrückliche Aktivierung. Fahrzeugwiederherstellung erhält andere Fahrzeuge und gemeinsame Einstellungen. Kontoaktivierung prüft die Revisionen aller bisherigen Fahrzeuge. Wiederholte Übernahmen erzeugen keine zusätzlichen Einträge.
 
-Vollständige lokale Prüfung einschließlich Galerie, Belegerkennung, Tankstellensuche und Sitzungsadapter: **194 Tests in 15 Dateien**, TypeScript-Prüfung, Vite-Produktionsbuild, Apps-Script-Build und Cloudflare-Pages-Build. Die Prüfungen entsprechen den Schritten von `pnpm check`. Zusätzlich wird das gebaute Apps-Script-Bundle ohne Browser-/Node-Globals in einem isolierten V8-Kontext geladen; alle vier öffentlichen Top-Level-Funktionen bleiben vorhanden. Das GitHub-Pages-Artefakt enthält nur Frontend und öffentliche Konfiguration; der Cloudflare-Dienst wird separat gebaut. Der Build prüft auch, dass OCR-Worker, Sprachdateien, Core-Varianten und Lizenztexte tatsächlich im Website-Artefakt liegen.
+Eine tatsächlich gespeicherte alte D1-Akte wurde mit IDs, Beträgen, Arbeiten und Historie übernommen. Ihre bisherigen Tabellen bleiben auch nach neuen Änderungen lesbar und unverändert. Die Sicherung vor Migration lässt sich nach einem Abbruch mit denselben Bytes wiederholen. Dieser lokale Rückweg ersetzt keinen Rollback neuer Buchungen auf eine alte Website; die Anleitung beschreibt diese Grenze ausdrücklich.
 
-`pnpm audit --json` am 26. Oktober: zunächst vier Meldungen zur transitiven Bibliothek `fast-uri` 3.1.8. Nach kompatibler Aktualisierung auf 3.1.9 meldete die erneute Registry-Prüfung **0 bekannte Schwachstellen**, einschließlich der neuen PDF-/OCR-Abhängigkeiten. Exakte Versionen und Integritätshashes stehen im Lockfile. Ein Audit ersetzt keine vollständige Sicherheitsanalyse.
+Dateireservierungen prüfen die Konto-/Gesamtquote atomar. SHA-256, Dateigröße, Original-/Vorschaurolle, unterbrochene R2-Schreibvorgänge und wiederholte Uploads wurden geprüft. Automatische Sicherungen und ihre Aufbewahrung arbeiten in begrenzten Schritten; unbestätigte abgebrochene Sicherungsteile werden bereinigt, Originale und bestätigte frühere Sicherungen bleiben geschützt.
 
-| Bereich | Nachweis |
-| --- | --- |
-| JSON-Vertrag | Gute und fehlerhafte Repository-Beispiele, Versionen, Integer-Cent, Kalenderdaten, lokale Referenzen, unbekannte Felder, Markdown-Codeblock |
-| Untrusted input | HTML als Text, CSV-/Sheets-Formelinjektion, MIME-Signaturen, Größen-/Hashprüfung |
-| Kosten | 50-Euro-Kauf, Einbau ohne neue Zahlung, 10-Euro-Erstattung, 100-Euro-Planung; getrennte Einnahmen/Kauf/Betriebskosten |
-| Dubletten | Identische Pakete, geänderte Import-ID, Retry nach verlorener Antwort, neu formulierte Rechnung, doppelte Rechnung im selben Paket, bewusste Begründung |
-| Dokumente | Exakte Namen, Mehrdeutigkeit, Hash statt Dateiname, gleicher Name bei verschiedenen Inhalten, mehrfach verwendetes Original |
-| Korrektur | Archiv zählt weiter, Storno zählt nicht, ausgeblendete Kategorie zählt weiter, Kostenanteile und Revisionenkonflikt |
-| Historie | Alte Kilometer überschreiben keinen neuen bestätigten Stand; unbekannte Beträge/Datum bleiben null; mehr als 100 gespeicherte Einträge |
-| Termine | Datum ODER Kilometer, Vorlauf, Monatsende/Schaltjahr, tatsächliche Erledigung, idempotente Erledigung, feste Kalenderregel |
-| Verbrauch | Teilbetankungen im vollständigen Intervall; keine Berechnung über eine bekannte Lücke |
-| GIS-/REST-Adapter | Deployment-ID, offizieller Endpunkt, Header statt Token-URL, vollständige Scopes, Ablauf und fremde Origin, kein Erfolg bei done:false |
-| Cloudflare-Sitzungen (lokal) | Echtes SQLite-Schema, einmaliger browsergebundener State/PKCE, ausschließlich verifiziertes Eigentümerkonto, AES-GCM-Tokens, gehashte Cookies, 30 Tage/12 Stunden, Logout und Ablauf, Origin/CSRF, widerrufene Freigaben, serverseitiges Refresh vor sechs Minuten Restlaufzeit |
-| Cloudflare-Aufrufe und Diagnose | Reproduzierter Abbruch bei workerd-inkompatiblem Redirectmodus; unterstützter manueller Modus bei Codeaustausch, Kontoabruf, Refresh, API und Tageslauf; Weiterleitungen vor Weitergabe von Geheimnissen abgewiesen; feste Fehlerkennungen ohne private Inhalte; fehlende Tabelle ohne Teilanmeldung |
-| Sitzungsadapter/Weiterleitung | Neue Adapterinstanz stellt Sitzung ohne OAuth her, nur festes Popup akzeptiert, kein Google-Bearer im Browser, kein automatisches Wiederholen von Schreibzugriffen, fester scripts.run-Umschlag, Unicode/JSON-Ausbruch/Größenlimit/ungültiges UTF-8, Stringargument im Google-Backend validiert |
-| Tankstellensuche (lokal) | Echtes SQLite mit idempotenter Zusatzmigration und unveränderten Konten; Sitzung, Origin und CSRF; direkter JSON-Endpunkt im Adapter; fehlender/ungültiger/Demo-Schlüssel ohne Netzaufruf; begrenzte Suchfelder und Anfragegröße; gerundeter GPS-Punkt, PLZ-Geocoder mit Cache; atomare gemeinsame Anbietergrenzen bei parallelen Suchen; drei Minuten Ergebniscache; keine Google-Tokens beim Anbieter; Weiterleitungen und private Fehlertexte abgewiesen; fehlende Preise bleiben unbekannt; Kraftstoff-/Umkreisfilter ohne weitere Anbieterabfrage; Wartezeit und Sitzungsablauf |
-| Google-Backend (simuliert) | Eigentümer/fehlende Identität, idempotentes Setup, benannte Spalten/stringValue, Integrität, atomarer Batch-Fehler, Uploadabbruch/Dateiwiederverwendung |
-| Automation (simuliert) | Ein Editortrigger, globale/regelförmige Aktivierung, Bündelung, Versandwiederholung unterdrückt, unklarer Ausgang, Kontingentfehler und ausdrückliche Testmail |
-| Wiederherstellung | Tatsächlicher ZIP/CSV-Rundlauf und simulierte neue Google-Ressourcen; neue Drive-IDs, gleiche Originalbytes, Hashes, Beträge und Links; fehlende Teile abgewiesen |
-| Galerie und Pinnwand | Auswahl bestehender Bilddokumente, Standard zuerst, stabile Sortierung, Rechnungsfotos ausgeschlossen; SSR mit 0, 1, 3, 10 und 11 Bildern sowie mobiler Begrenzung auf 4 |
-| Private Vorschauen | Höchstens zwei gleichzeitige Abrufe, Wiederverwendung innerhalb einer Sitzung, verworfene verspätete Antworten nach Abmeldung/Kontowechsel, Wiederholung eines fehlgeschlagenen Abrufs |
-| Belegvorschläge | Mehrseitiger Text, gültige/ungültige Datumsangaben, mehrdeutige Rechnungsbeträge, Netto/Brutto, Positionen und reale OCR-Textregression; keine erfundenen Nullbeträge |
-| Werkstätten und Preise | Eigenleistungsstandard nur aktiv, historische Kopie trotz Profiländerung, genaue Dezimalpreise, ganze Positions-Cent, unpassende Referenzen abgewiesen, Kosten einmal, Retry und Prototypnamen abgesichert; v1 weiterhin strikt |
-| Tabellenumstellung | Altes Layout ohne Schreibzugriff lesbar, Sicherung vor Umstellung, konstante IDs, Manipulation vor Sicherung abgewiesen, atomarer Fehler mit Wiederholung, Rastererweiterung im selben Batch, keine ignorierten neuen Zellen unter altem Header, Restore neuer Zusatzangaben |
-| CSV-Zusatzfelder | Optionale Positionspreise auch dann enthalten, wenn die erste Zeile noch das alte Feldset besitzt |
+Der große ZIP-Rundlauf verwendete echte ZIP-Dateien, synthetische Belegbytes und vollständige SHA-Prüfungen. Der Übernahmeadapter war hierbei ein lokaler Ersatz; die Rechteprüfung erfolgt zusätzlich in den SQLite-/API-Tests.
 
-**Simuliert bedeutet:** Die Tests führen den echten Backend-/Adaptercode gegen kontrollierte lokale Google-Service-Ersatzobjekte aus. Sie beweisen keine realen Google-Berechtigungen, Servicequoten oder Mailzustellung.
+| Originalbytes | Dokumente | ZIP-Teile | Sekunden | beobachtetes RSS nach GC, MB |
+|---|---|---|---|---|
+| 268000000 | 67 | 14 | 17 | 154 |
+| 960000000 | 240 | 48 | 63 | 291 |
 
-## Erster echter Verbindungstest: falsche Integritätsmeldung
+Die Speicherangaben sind Stichproben nach Garbage Collection, keine gemessenen Spitzenwerte. Originale werden einzeln statt gemeinsam im Arbeitsspeicher verarbeitet. Rohdaten: test-results/large-backup.json. Keine 960 MB wurden zu einem externen Dienst übertragen.
 
-Der Nutzer konnte sich verbinden; erst der Lese-/Schreibtest meldete eine direkte Tabellenänderung. Er bestätigte, keine Tabellenzellen geändert zu haben. Der bisherige Code kombinierte Advanced-Sheets-API-Schreibvorgänge mit SpreadsheetApp-Lesevorgängen. Ein Test mit zwischengespeicherten SpreadsheetApp-Werten reproduziert exakt die Fehlermeldung beim Rücklesen des frisch geschriebenen Prüfeintrags. Ein zweiter Regressionstest zeigt, dass derselbe alte Cache echte Änderungen verdecken konnte.
+## Tagesaufgaben und Anbieterbereinigung
 
-Die Korrektur liest alle Datenblätter und `_Integrity` gemeinsam per `Sheets.Spreadsheets.get` und verwendet die rohen `userEnteredValue`-Felder. Die Prüfsummenberechnung und das Speicherformat bleiben gleich. Es gibt keine neue Prüfsumme für ungeprüfte Daten, keine automatische Freischaltung und keinen Datenreset. Beide Regressionstests sowie ein zusätzlicher Formeltest bestehen; auch alle bisherigen Tests bestehen.
+08:00 Uhr Europe/Berlin einschließlich Zeitumstellungen, pausierte Automation, gebündelte Wartungsmail für aktive Fahrzeuge, bestätigte Empfängeradresse, identische Wiederholung nach verlorener Resend-Antwort, drei Testmails im rollenden Stundenfenster sowie globales App-Versandbudget geprüft. Jobfehler werden am äußeren Cron-Aufruf sichtbar und im Konto gespeichert. Aufbewahrung und fehlgeschlagene Sicherungen schützen vorherige bestätigte Sicherungen.
 
-Nach zunächst erneut gemeldetem Fehler bestätigte eine direkte Editor-Diagnose **Leser: neue Korrektur** und **Lesetest: OK**. Der Nutzer bestätigte ausdrücklich den **Lese-/Schreibtest auch auf der Website**, den Eingang der ausdrücklich ausgelösten Testmail sowie Upload/Öffnen/Download des Beispieldokuments. Fremdkonto-Test, automatischer Triggerlauf sowie realer Export/Restore sind damit noch nicht nachgewiesen. Das Einrichtungspaket `examples/einrichtungstest/Belegtest.json` ist gegen das verbindliche Schema geprüft und enthält nur ein Beispieldokument, keine Ausgaben, Arbeiten oder Regeln.
-
-Die Cloudflare-Anmeldung ist inzwischen eingerichtet und in der öffentlichen Website aktiviert. HTTPS, öffentliche Konfiguration, unauthentifizierte Sitzungsprüfung und Start der Anmeldung mit D1-State wurden live geprüft; der echte Google-Rücksprung meldete `GOOGLE_TOKEN`. Ursache im Code: `redirect:'error'` wird von Cloudflares workerd bereits vor dem Netzaufruf abgewiesen. Ein neuer Regressionstest reproduzierte den Abbruch; die Korrektur verwendet durchgehend `manual` und lehnt 3xx-Antworten ausdrücklich ab. Grundlage: [workerd-Implementierung](https://github.com/cloudflare/workerd/blob/main/src/workerd/api/http.c%2B%2B). Der vollständige echte Google-Login, Cookies nach Browserneustart, zweites Konto und Free-CPU-Limit mit 4-MiB-Originalen bleiben bis zur echten Abnahme offen. Tagesprüfungs-Worker ebenfalls noch ausstehend.
+Die vorbereitete Übernahme der alten Tankstellen-Caches erhält globale Aufrufgrenzen, führt keine ungewollten SQL-Anweisungen aus und verweigert fremde Quelltabellen. Live-Übernahme und Stilllegung alter Anbieterkomponenten wurden nicht ausgeführt.
 
 ## Browserprüfung
 
-### Galerie, Pinnwand und Belegerkennung
+Die React-Oberfläche und der echte Cloudflare-Adapter liefen gegen die lokale Test-API mit synthetischen Sitzungstokens. Das ist kein echter Clerk-Login. Geprüft wurden Desktop und ein 390 Pixel breiter mobiler Rahmen unter der vorgesehenen CSP; für den mobilen Testrahmen ist ausschließlich lokal ein gleichnamiger iframe zugelassen.
 
-Die echte App wurde im getrennten lokalen Testmodus mit ausschließlich synthetischen Fahrzeugbildern und Belegen bei **1280 × 900** und **360 × 800** geprüft:
+- Start ohne Browserfehler; 123 Testbuchungen und zwei Fahrzeuge. Wechsel, gespeicherter Motorwert und letzte Fahrzeugauswahl nach Neuladen bestätigt.
+- 50 Einträge, danach 100 geladene Einträge; serverseitige Suche findet Testrechnung 0 außerhalb der ersten Seite. Zweites Konto zeigt keine Ausgaben oder Bilder des ersten Kontos.
+- Elf synthetische Fahrzeugbilder hochgeladen, Standardfoto gewählt, zehn Kacheln plus Weiter-Link am Desktop und vier plus Weiter-Link mobil. Kopfbereich auf schmalen Displays korrigiert.
+- Digitales zweitseitiges PDF: Datum, Nummer, Verkäufer, 72,59 EUR und Positionspreise erkannt. Manuell geänderter Titel bleibt nach erneutem Auslesen erhalten. Nach bestätigtem Speichern erhöht sich die Kostensumme genau um 72,59 EUR.
+- Gescannte PDF lokal mit deutschen/englischen Sprachdaten erkannt, keine CSP-Fehler. Abbruch funktioniert; Felder bleiben bearbeitbar.
+- Nachweise: test-results/fleet-desktop.png, fleet-mobile.png und fleet-ocr.png. Sie enthalten ausschließlich synthetische Daten und bleiben von Git ausgeschlossen.
 
-- Erstes Bild groß, danach zehn weitere Bilder gemeinsam mit Auswahlvorschau gespeichert. Die Standardauswahl blieb durch neue Uploads unverändert. Desktop: zehn Bildkacheln und „+ 1 weitere“; mobil: vier Kacheln und „+ 7 weitere“.
-- Standardfoto auf ein Hochformatbild umgestellt, Seite neu geladen und Testakte erneut geöffnet: Auswahl blieb erhalten. Bilder werden vollständig im Rahmen dargestellt. Bild-Großansicht und Schließen geprüft.
-- Desktop-Textfläche auf ungefähr 27 Prozent begrenzt; mobile Anordnung mit Text oberhalb der Collage. Galerie einspaltig auf 360 Pixeln. Kein horizontaler Seitenüberlauf: `scrollWidth = clientWidth = 345` einschließlich Scrollbarabzug.
-- Digitale PDF mit zwei Seiten direkt gelesen, Seitenvorschau geprüft. Synthetische Scan-PDF und JPG-Belegfoto tatsächlich mit Tesseract.js gelesen. Datum 26.10.2026, Nummer RE-2026-42, Verkäufer, Rechnungsbetrag 72,59 Euro, Mengen 2 / 4,5, Teilenummern OF-42 / OL-5, Einzelpreise 12,50 / 8,00 und Netto-Positionsbeträge 25,00 / 36,00 erkannt. Eine als „|“ erkannte Einheit blieb leer. Ein zuvor erkannter Parserfehler bei der Trennung von Teilenummer und Preis wurde korrigiert und mit dem tatsächlichen OCR-Text als Regressionstest abgesichert.
-- Titel und Position manuell korrigiert und erneut ausgelesen: Korrekturen blieben erhalten. Erkennung eines Fotos abgebrochen und anschließend erfolgreich erneut gestartet. Ungültige PDF lieferte einen sichtbaren Lesefehler, die Felder blieben bearbeitbar. Eine passwortgeschützte PDF wurde nicht gesondert im Browser getestet.
-- Eigenleistungsprofil als Standard gespeichert; „selbst gemacht“ wählte es voraus. Eine Ausgabe und verknüpfte Arbeit gemeinsam mit Original gespeichert; Verkäufer und Werkstatt blieben getrennt. Tatsächliches Arbeitsdatum und Erledigung separat bestätigt. Historie und Detailansichten zeigten die Material-/Preisangaben und historische Werkstattkopie. Übersicht zählte insgesamt **72,59 Euro**, ohne zusätzliche Kosten für die Arbeit oder die Positionssummen.
-- Mobile Belegansicht: Vorschau unter den Feldern, kein Seitenüberlauf (`345/345`). Zusätzlich den **Vite-Produktionsbuild** auf eigener lokaler Origin geöffnet und eine Scan-PDF mit tatsächlich geladenem PDF-Worker, Tesseract-Core und mitgelieferten Sprachdaten erfolgreich ausgelesen; Rechnungsbetrag und Einzelpreise korrekt.
+Die zunächst weiße Testseite wurde behoben: Der erzeugte JSON-Prüfer hatte eine nicht browserfähige CommonJS-Anweisung; zusätzlich enthielt die lokale API-Adresse einen falschen Port. Der Build prüft das öffentliche Ergebnis nun auf diesen Fehler. OCR-Workerpfade beginnen an der Websitewurzel und funktionieren auch aus der verschachtelten Testseite.
 
-Nachweise: [Pinnwand Desktop](docs/screenshots/pinnwand-desktop-lokal.png), [Pinnwand mobil](docs/screenshots/pinnwand-mobil-lokal.png), [Galerie](docs/screenshots/galerie-desktop-lokal.png), [PDF-Prüfansicht](docs/screenshots/beleg-pdf-desktop-lokal.png), [OCR-Prüfansicht](docs/screenshots/beleg-ocr-desktop-lokal.png), [Beleg mobil](docs/screenshots/beleg-mobil-lokal.png). Keine echten Fahrzeugfotos oder privaten Belege wurden für diese Nachweise veröffentlicht. Kein physisches Mobilgerät, zweites echtes Konto oder produktiver Google-Migrationslauf wurde damit geprüft.
+## Vor der produktiven Freigabe noch erforderlich
 
-### Bisherige Browserprüfungen
+1. Getrennte Cloudflare-Testressourcen und Clerk Development gemäß [Umstellungsanleitung](docs/UMSTELLUNG_CLOUDFLARE.md) einrichten; Vorlagen und Prüfung gegen produktive Datenbindungen liegen vor.
+2. Echte Einladung, Passwortzurücksetzung, Sitzung/Abmelden und parallele Verwendung auf zwei physischen Geräten prüfen.
+3. Tatsächliche Worker-CPU, D1-/R2-Kontingente, echten Resend-Versand sowie automatischen Tageslauf/Sicherung abnehmen.
+4. Vor dem produktiven Wechsel D1 und Originale sichern, Übernahme probeweise durchführen und den Rückweg dokumentieren. Erst danach Freigabe, Domainwechsel und Stilllegung alter Dienste.
 
-Am 26. Oktober wurde die neue Tankstellenansicht lokal bei **360 × 800** und **1280 × 900** geprüft. Die echte App zeigt den Haupttab und die interaktive Karte im getrennten Testmodus; dort werden bewusst keine Livepreise abgefragt. Eine zusätzliche, nicht veröffentlichte Vorschauseite verwendet dieselben Komponenten mit eindeutig gekennzeichneten synthetischen Tankstellen und Preisen. Geprüft wurden PLZ-Suchablauf, Kraftstoffauswahl, Nur-geöffnet-Filter, Preisreihenfolge, Kartenmarkierungen und das Öffnen eines Kartenpunkts durch Auswahl einer Listenkarte. Alle drei Kraftstoffpreise sowie fehlende Preise sind mobil lesbar. Kein horizontaler Seitenüberlauf (345 beziehungsweise 1265 CSS-Pixel nach Abzug der Scrollbar). Echte Standortfreigabe, Tankerkönig-Schlüssel und reale Anbieterantworten wurden dabei nicht getestet.
-
-In der Fahrzeuganlage waren die Eingaben trotz sichtbarer Beispiele leer. In der Erfassung wurde eine Vorschau nur mit einem Testtitel erstellt: Betrag, Kilometerstand, Liter und Notizen blieben im erzeugten JSON `null`. Die Beispieltexte wurden nicht übernommen; die Vorschau wurde nicht als Ausgabe gespeichert. Nachweise: [Formularbeispiele](docs/screenshots/formular-beispiele-desktop.png), [Tankstellen Desktop mit Testpreisen](docs/screenshots/tankstellen-testdaten-desktop.png), [Tankstellen mobil mit Testpreisen](docs/screenshots/tankstellen-testdaten-mobil.png). Kein physisches Mobilgerät wurde verwendet.
-
-Die neue vorgeschaltete Anmeldeansicht wurde lokal bei **360 × 800** geprüft: `scrollWidth = clientWidth = 360`, Merkfunktion/Erklärung lesbar, Testmodus erreichbar, Abmelden führt wieder zur Anmeldeansicht. Nachweis: [Anmeldeseite, lokal vorbereitet](docs/screenshots/anmeldung-mobil-vorbereitet.png), [Abmeldung der lokalen Testakte](docs/screenshots/anmeldung-abgemeldet-lokaler-test.png). Der Google-Button ist auf dieser HTTP-Layoutvorschau absichtlich deaktiviert; kein echter Google-/Cloudflare-Login wurde damit geprüft. Produktive Konfiguration wurde für die Vorschau nicht verändert.
-
-Im lokalen In-App-Browser mit ausdrücklich aktiviertem Testmodus:
-
-- Manuell 50,00 Euro ohne erfundenes Datum erfasst, Vorschau und bestätigte Historienanzeige geprüft.
-- Drei Rechnungen gemeinsam aus einer JSON-Datei geladen, erste vor dem Speichern umbenannt, drei unterschiedliche PNG-Originale gleichzeitig ausgewählt und anhand exakter Namen automatisch zugeordnet. Historie enthält drei verknüpfte Belege; Jahreskosten 60,00 Euro. Der undatierte 50-Euro-Testkauf wird getrennt als offen ausgewiesen.
-- 360 × 800 und 1280 × 900 geprüft. Dokument-/Import-/Historienansicht ohne horizontalen Seitenüberlauf; gemessenes documentElement: scrollWidth = clientWidth, jeweils 345 bzw. 1265 CSS-Pixel nach Abzug der Scrollbar.
-- Langer Originaldateiname auf 360 Pixeln geprüft. Dabei erkannte Verengung durch die Aktionsbuttons korrigiert; Vorschau/Download liegen mobil in einer eigenen Zeile.
-- Tastatur-Navigation mit Tab geprüft; nächster Hauptlink wird fokussiert, sichtbare durchgezogene Fokusmarkierung vorhanden.
-- Kosten-Druckvorschau mit Datum, Belegnummern und korrekten Beträgen geprüft. Browserdruck aufgerufen; der native Dialog blockierte die Browsersteuerung und wurde mit Escape geschlossen. **Keine fertige PDF-Datei oder tatsächliche A4-Seitenumbrüche behauptet.** Abschließender PDF-Probedruck in der Einrichtung erforderlich.
-
-Nachweise: [Desktop im Testmodus](docs/screenshots/desktop-testmodus.png), [mobile Dokumentansicht](docs/screenshots/mobile-dokumente-testmodus.png). Die Bilder zeigen ausschließlich synthetische Testdaten. Kein physisches Android-Gerät wurde verwendet.
-
-## Zuordnung zu den Abnahmekriterien
-
-| Nr. | Stand |
-| --- | --- |
-| 1 | Lokal und im Browser mit drei gemeinsam zugeordneten Testoriginalen geprüft; echter Google-Upload noch offen |
-| 2–5 | Automatisiert geprüft; UI-Bearbeitung/Null-Datum zusätzlich im Browser |
-| 6 | Fachlogik und Mailautomation mit simulierten Diensten geprüft; reale Triggerzustellung offen |
-| 7 | Ablehnung und Tokenmodell lokal geprüft; fremdes echtes Konto/Live-Ablauf erst nach Kontokonfiguration |
-| 8–10 | Automatisiert geprüft; HTML wird durch React als Text dargestellt |
-| 11 | ZIP-Rundlauf und neue simulierte Google-Ressourcen geprüft; echter Google-Restore offen |
-| 12 | Desktop/360-Pixel/Import/langer Name/Tastatur/Druckvorschau geprüft. Galerie und lokale OCR zusätzlich wie oben geprüft. Physisches Android und fertiger Browser-PDF-Probedruck offen. Tankstellenkarte lokal geprüft; echte Anbieterabnahme nach Schlüsselfreischaltung offen |
-
-## Noch vom Kontoinhaber zu erledigen
-
-Für diese Erweiterung: bestehenden vollständigen Export sichern, das vorhandene Apps Script als neue Version aktualisieren und die lokal geprüften Änderungen selbst committen/pushen. Die genaue Schrittfolge steht in [docs/GALERIE_UND_BELEGERKENNUNG.md](docs/GALERIE_UND_BELEGERKENNUNG.md). Repo, Domain und grundlegender Google-Durchstich sind bereits eingerichtet. Offene reale Kontotests bleiben zweite Google-Identität, dauerhafte Sitzung nach Browserneustart, Tagesprüfung, vollständiger Export/Restore und PDF-Probedruck.
-
-Die lokale Tankstellenkarte funktioniert unabhängig von der Kernakte. Echte Preise benötigen die gesonderte Einrichtung in [docs/TANKSTELLENSUCHE.md](docs/TANKSTELLENSUCHE.md). Diese Grenzen sind keine erfolgreichen Produktivnachweise.
-
-## Neutrale Oberfläche und Kontentrennung
-
-Neue Speicher beginnen mit leeren Hersteller-/Modellfeldern; die reservierte Fahrzeugzeile bleibt für Speicherversion 1 bestehen und wird erst nach ausdrücklichem Hinzufügen angezeigt. Bestehende Fahrzeuge werden nicht verändert. SSR-Prüfung der Anmelde- und Hinzufügeansicht ohne Marken-/Modellvorgaben. JSON-Vertrag unverändert; allgemeiner Erfassungsprompt als zusätzliche Fassung.
-
-Acht zusätzliche Google-Backendtests mit drei simulierten Konten prüfen eigene Ressourcen/Kosten, keine Dateierstellung vor Fahrzeugbestätigung, kein Rückfall auf bestehende Eigentümerressourcen, manipulierte Ressourcen, fremde Restore-Kennungen, fehlende Identität und eigenen Mail-/Sicherungslauf. Sieben zusätzliche Cloudflare-Tests prüfen die ausdrückliche Freischaltung, kontoabhängige Bearer/CSRF/Sitzungen, getrenntes Abmelden, vertauschte verschlüsselte Tokens, Berliner Sommer-/Winterzeit und Verarbeitung/Lease/Retry der Tagesprüfung. Kein zweiter echter Google-/Cloudflare-Kontotest behauptet.
-
-Browserprüfung der neutralen Fassung: 360 × 800, neuer lokaler Testmodus → leere Hinzufügeansicht → Volkswagen Golf (2020) bestätigt hinzugefügt; eigener Fahrzeugname in Übersicht und Formular, danach Abmelden ohne Modellanzeige. Kein horizontaler Überlauf: mobil 345/345, Desktop 1265/1265. Bilder: docs/screenshots/fahrzeugakte-anmeldung-neutral.png, fahrzeug-hinzufuegen-neutral.png und fahrzeugakte-golf-desktop-test.png. Ausschließlich lokale Testdaten, kein zweites echtes Konto.
+Es wurde nichts committed, gepusht, veröffentlicht, an produktiven Konten umgestellt oder aus der bisherigen Google-Akte gelöscht.

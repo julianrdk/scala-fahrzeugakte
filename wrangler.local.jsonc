@@ -1,0 +1,27 @@
+{
+  "name": "fahrzeugakte-lokal",
+  "main": "auth/src/worker.ts",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": false,
+  "vars": {
+    "APP_ORIGIN": "http://127.0.0.1:5173",
+    "LOCAL_DEVELOPMENT": "true",
+    "CLERK_PUBLISHABLE_KEY": "CLERK_TEST_KEY_EINTRAGEN",
+    "CLERK_ISSUER": "https://TEST.clerk.accounts.dev",
+    "AUTOMATION_ENABLED": "false"
+  },
+  "d1_databases": [
+    {
+      "binding": "DATA_DB",
+      "database_name": "fahrzeugakte-lokal",
+      "database_id": "local-only",
+      "migrations_dir": "auth/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "fahrzeugakte-lokal"
+    }
+  ]
+}

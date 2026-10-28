@@ -16,3 +16,5 @@ config/private*
 test-results/
 playwright-report/
 public/ocr/
+
+wrangler.deploy.json

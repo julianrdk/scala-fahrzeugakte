@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+.wrangler/
+dist/
+auth/dist/
+apps-script/
+public/ocr/
+shared/generated/
+test-results/
+pnpm-lock.yaml

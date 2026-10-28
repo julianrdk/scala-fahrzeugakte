@@ -1,139 +1,807 @@
-import {lazy,Suspense,useEffect,useState,type ReactNode,type FormEvent} from 'react';
-import {LayoutDashboard,History,Plus,CarFront,ArrowUpRight,FileText,Settings2,ChevronRight,Download,Printer,Check,Cloud,LogOut,TriangleAlert,FolderOpen,CalendarDays,Fuel,Search,Wrench,Link as LinkIcon} from 'lucide-react';
-import {googleConnection,SessionAdapter,SignInRequired,TestAdapter,prepareFile,type GoogleConnection,type Adapter,type Config,base64Bytes} from './adapter';
-import {blankPackage,emptyState,parseImport,validatePackage,autoMatch,totals,currentOdometer,odometerWarnings,fuelIntervals,dueStatus,researchPrompt,templateKey,clone,MAX_FILE,duplicates} from '../shared/logic';
-import type {State,ImportPackage,ExpenseInput,WorkInput,ReminderInput,Doc,Table,Meta,Expense,Work,Reminder} from '../shared/types';
-import {categories} from '../shared/types';
-import {download,exportArchive,parseArchives,restoreArchive} from './backup';
-import {SettingsView} from './SettingsView';
-import {PrintView} from './PrintView';
-import './login.css';
-import {hasVehicle,vehicleName} from '../shared/vehicle';
-import {LoginView} from './LoginView';
-import {VehicleSetup} from './VehicleSetup';
-import {Field,captureExample} from './Field';
-import {FuelView} from './FuelView';
-import {Gallery,VehicleHero} from './Gallery';
-import {PhotoProvider} from './PhotoSession';
-import {CloudflareAdapter} from './CloudflareAdapter';
-import {CloudStart} from './CloudStart';
-import './cloudflare.css';
-const ReceiptCapture=lazy(()=>import('./ReceiptCapture').then(m=>({default:m.ReceiptCapture})));
-import {PositionEditor} from './PositionEditor';
-import {WorkshopInfo,WorkshopSelect} from './Workshops';
-import {validateCapture,workshopSnapshot} from '../shared/capture';
-import type {CaptureMetadata} from '../shared/types';
-const money=(c:number|null|undefined,currency:string|null='EUR')=>c==null?'Betrag unbekannt':currency===null?(c/100).toLocaleString('de-DE',{minimumFractionDigits:2})+' (Währung offen)':new Intl.NumberFormat('de-DE',{style:'currency',currency}).format(c/100);
-const date=(d:string|null|undefined)=>d?d.split('-').reverse().join('.'):'Datum unbekannt';
-const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin'}).format(new Date());
-const number=(x:string)=>{if(!x.trim())return null;const n=Number(x.replace(',','.'));if(!Number.isFinite(n))throw Error('Bitte eine gültige Zahl eingeben.');return n;};
-const cents=(x:string)=>{if(!x.trim())return null;if(!/^-?\d+(?:[.,]\d{1,2})?$/.test(x.trim()))throw Error('Betrag bitte mit höchstens zwei Nachkommastellen eingeben.');return Math.round(Number(x.replace(',','.'))*100);};
-const numText=(x:number|null|undefined)=>x==null?'':String(x).replace('.',',');
+import { emptyHistoryFilter, type HistoryFilter } from "../shared/fleet";
+import { date } from "./view-support";
+import {
+  CarFront,
+  Check,
+  ChevronRight,
+  Fuel,
+  History,
+  LayoutDashboard,
+  LogOut,
+  Plus,
+  Printer,
+  Settings2,
+  TriangleAlert,
+  Wrench,
+} from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { emptyState, validatePackage } from "../shared/logic";
+import type {
+  CaptureMetadata,
+  Doc,
+  ImportPackage,
+  Meta,
+  State,
+  Table,
+} from "../shared/types";
+import { hasVehicle, vehicleName } from "../shared/vehicle";
+import {
+  SignInRequired,
+  TestAdapter,
+  base64Bytes,
+  type Adapter,
+  type Config,
+} from "./adapter";
+import { download } from "./backup";
+import "./cloudflare.css";
+import { CloudflareAdapter } from "./CloudflareAdapter";
+import { CloudStart } from "./CloudStart";
+import { FuelView } from "./FuelView";
+import { Gallery } from "./Gallery";
+import "./login.css";
+import { PhotoProvider } from "./PhotoSession";
+import { PrintView } from "./PrintView";
+import { SettingsView } from "./SettingsView";
+import { VehicleSetup } from "./VehicleSetup";
+import { Btn, Empty, today, type Runner } from "./view-support";
+const Capture = lazy(() =>
+  import("./views/Capture").then((m) => ({ default: m.Capture })),
+);
+const ImportPreview = lazy(() =>
+  import("./views/Capture").then((m) => ({ default: m.ImportPreview })),
+);
+import { Dashboard } from "./views/Dashboard";
+import { HistoryView } from "./views/History";
+import { Documents, Reminders, VehicleForm } from "./views/Vehicle";
+type ExternalSession = {
+  adapter: CloudflareAdapter;
+  config: Config;
+  initial: any;
+  logout: () => Promise<void>;
+};
+export function App({ external }: { external?: ExternalSession } = {}) {
+  const [epoch, setEpoch] = useState(0),
+    [initial, setInitial] = useState(external?.initial);
+  const change = async (id: string) => {
+    if (!external) return;
+    const out = await external.adapter.selectVehicle(id);
+    setInitial(out);
+    setEpoch((n) => n + 1);
+    location.hash = "/";
+  };
+  const reload = async () => {
+    if (!external) return;
+    const out = await external.adapter.bootstrap();
+    setInitial(out);
+    setEpoch((n) => n + 1);
+  };
+  return (
+    <Suspense fallback={<p role="status">Ansicht wird geladen …</p>}>
+      <VehicleApp
+        key={epoch}
+        external={external ? { ...external, initial } : undefined}
+        onVehicleChange={change}
+        onReloadFleet={reload}
+      />
+    </Suspense>
+  );
+}
+function VehicleApp({
+  external,
+  onVehicleChange,
+  onReloadFleet,
+}: {
+  external?: ExternalSession;
+  onVehicleChange?: (id: string) => Promise<void>;
+  onReloadFleet?: () => Promise<void>;
+}) {
+  const [previewCapture, setPreviewCapture] = useState<
+      CaptureMetadata | undefined
+    >(),
+    dirty = useRef(false),
+    routeRequest = useRef(0);
+  const [needsLogin, setNeedsLogin] = useState(false),
+    [accountEpoch] = useState(0),
+    [config] = useState<Config | null>(external?.config ?? null),
+    [adapter] = useState<Adapter>(external?.adapter ?? new TestAdapter());
+  const [state, setState] = useState<State | null>(
+      external?.initial.state ?? null,
+    ),
+    [status, setStatus] = useState<any>(external?.initial.status ?? {}),
+    [route, setRoute] = useState(location.hash.slice(1) || "/"),
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [working, setWorking] = useState(false),
+    [loading, setLoading] = useState(false),
+    [online, setOnline] = useState(navigator.onLine),
+    [year, setYear] = useState(today().slice(0, 4)),
+    [preview, setPreview] = useState<ImportPackage | null>(null),
+    [progress, setProgress] = useState(""),
+    [printMode, setPrintMode] = useState<"service" | "costs" | "sale">(
+      "service",
+    ),
+    [includeCost, setIncludeCost] = useState(false),
+    [showPrintPreview, setShowPrintPreview] = useState(false),
+    [printState, setPrintState] = useState<State | null>(null),
+    [adding, setAdding] = useState(false);
+  useEffect(() => {
+    const navigate = () => {
+      setRoute(location.hash.slice(1) || "/");
+      window.scrollTo({ top: 0, left: 0 });
+    };
+    const connected = () => setOnline(navigator.onLine);
+    addEventListener("hashchange", navigate);
+    addEventListener("online", connected);
+    addEventListener("offline", connected);
+    if (!external)
+      void adapter.call("read").then((r) => {
+        setState(r.state);
+        setStatus(r.status);
+      });
+    return () => {
+      routeRequest.current++;
+      removeEventListener("hashchange", navigate);
+      removeEventListener("online", connected);
+      removeEventListener("offline", connected);
+    };
+  }, []);
+  const busy = working || loading,
+    runLock = useRef(false);
+  const initialView = useRef(true);
+  useEffect(() => {
+    if (!external) return;
+    if (initialView.current) {
+      initialView.current = false;
+      return;
+    }
+    const request = ++routeRequest.current;
+    setLoading(true);
+    void external.adapter
+      .loadView(route, year)
+      .then((r) => {
+        if (request === routeRequest.current) {
+          setState(r.state);
+          setStatus(r.status);
+        }
+      })
+      .catch((e) => {
+        if (request === routeRequest.current) setError(e.message);
+      })
+      .finally(() => {
+        if (request === routeRequest.current) setLoading(false);
+      });
+  }, [route, year]);
+  const run: Runner = async (action, success) => {
+    if (busy || runLock.current) return false;
+    runLock.current = true;
+    setWorking(true);
+    setError("");
+    setNotice("");
+    try {
+      await action();
+      if (success) setNotice(success);
+      return true;
+    } catch (e) {
+      if (e instanceof SignInRequired) setNeedsLogin(true);
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Die Aktion konnte nicht bestätigt werden.",
+      );
+      return false;
+    } finally {
+      runLock.current = false;
+      setWorking(false);
+      setProgress("");
+    }
+  };
+  async function refresh(a: Adapter = adapter, fresh = false) {
+    const result = await a.call("read", fresh ? { fresh: true } : {});
+    setState({ ...result.state });
+    setStatus(result.status);
+  }
+  async function mutate(action: string, arg: any) {
+    await adapter.call(action, arg);
+    dirty.current = false;
+    await refresh();
+  }
+  const s = state ?? emptyState(),
+    path = route.split("?")[0],
+    vehicle = s.Vehicles[0],
+    isTank = path === "/tankstellen" || path === "/fahrzeug/tankstellen",
+    isVehicle = path.startsWith("/fahrzeug") && !isTank,
+    active = isTank
+      ? "Tankstellen"
+      : path.startsWith("/historie")
+        ? "Historie"
+        : path === "/erfassen"
+          ? "Erfassen"
+          : isVehicle
+            ? "Fahrzeug"
+            : "Übersicht";
+  let historyFilter: HistoryFilter = emptyHistoryFilter;
+  try {
+    historyFilter = {
+      ...emptyHistoryFilter,
+      ...JSON.parse(
+        new URLSearchParams(route.split("?")[1] ?? "").get("filter") ?? "{}",
+      ),
+    };
+  } catch {}
+  const discard = () =>
+    !dirty.current ||
+    confirm("Ungespeicherte Eingaben verwerfen und Fahrzeug wechseln?");
+  const changeVehicle = async (id: string) => {
+    if (!discard()) return;
+    await run(async () => {
+      await onVehicleChange?.(id);
+    });
+  };
+  const connect = () => run(() => refresh(adapter, true));
+  const edit = (table: Table, row: Meta, patch: Record<string, unknown>) =>
+    run(async () => {
+      if (vehicle.archived)
+        throw Error("Bitte zuerst das Fahrzeug reaktivieren.");
+      await mutate("edit", {
+        table,
+        id: row.id,
+        revision: row.revision,
+        patch,
+      });
+    }, "Änderung gespeichert.");
+  async function openDocument(d: Doc, preview = false) {
+    const f = await adapter.call("document", { id: d.id });
+    if (!f) throw Error("Originaldatei fehlt.");
+    const bytes = base64Bytes(f.base64);
+    if (preview) {
+      const url = URL.createObjectURL(new Blob([bytes], { type: f.mime }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } else download(bytes, d.source_filename ?? d.title, f.mime);
+  }
+  const startPreview = (p: ImportPackage, capture?: CaptureMetadata) => {
+    setPreviewCapture(capture);
+    setPreview(validatePackage(p));
+    dirty.current = true;
+    location.hash = "/erfassen";
+  };
+  const logout = () =>
+    run(async () => {
+      if (!discard()) return;
+      if (external) await external.logout();
+      else location.href = "/";
+    });
+  if (!state)
+    return (
+      <div className="login-screen">
+        <p role="status">Akte wird geladen …</p>
+      </div>
+    );
+  if (!hasVehicle(s) || adding) {
+    const setup = (
+      <VehicleSetup
+        busy={busy}
+        error={error}
+        testMode={adapter.kind === "test"}
+        onSave={(input) =>
+          run(async () => {
+            await mutate("createVehicle", input);
+            setAdding(false);
+            if (external) await onReloadFleet?.();
+          })
+        }
+        onLogout={logout}
+      />
+    );
+    return (
+      <>
+        {adding && (
+          <button className="button" onClick={() => setAdding(false)}>
+            Zurück
+          </button>
+        )}
+        {!hasVehicle(s) && external ? (
+          <CloudStart
+            adapter={adapter}
+            onDone={async () => {
+              await onReloadFleet?.();
+            }}
+            onLogout={logout}
+          >
+            {setup}
+          </CloudStart>
+        ) : (
+          setup
+        )}
+      </>
+    );
+  }
+  return (
+    <PhotoProvider
+      adapter={adapter}
+      accountKey={
+        String(accountEpoch) + ":" + (adapter.accountId ?? adapter.kind)
+      }
+    >
+      <>
+        <a className="skip" href="#main">
+          Zum Inhalt
+        </a>
+        <div className="app-shell no-print" key={accountEpoch}>
+          <aside className="sidebar">
+            <a className="brand" href="#/">
+              <span className="brand-mark">
+                <CarFront size={25} />
+              </span>
+              <span>Fahrzeugakte</span>
+            </a>
+            <nav aria-label="Hauptnavigation">
+              {[
+                [LayoutDashboard, "Übersicht", "/"],
+                [History, "Historie", "/historie"],
+                [Plus, "Erfassen", "/erfassen"],
+                [CarFront, "Fahrzeug", "/fahrzeug"],
+                [Fuel, "Tankstellen", "/tankstellen"],
+              ].map(([Icon, label, to]) => (
+                <a
+                  key={String(label)}
+                  href={"#" + to}
+                  className={active === label ? "nav-item active" : "nav-item"}
+                  aria-current={active === label ? "page" : undefined}
+                >
+                  {typeof Icon !== "string" && <Icon size={20} />}
+                  <span>{String(label)}</span>
+                </a>
+              ))}
+            </nav>
+            <div className="sidebar-bottom">
+              <a href="#/fahrzeug/einstellungen">
+                <Settings2 size={17} /> Einstellungen
+              </a>
+            </div>
+          </aside>
+          <div className="workspace">
+            <header className="topbar">
+              <div className="vehicle-switch">
+                <label>
+                  Fahrzeug{" "}
+                  <select
+                    aria-label="Fahrzeug wechseln"
+                    disabled={busy}
+                    value={external?.adapter.vehicleId ?? vehicle.id}
+                    onChange={(e) => void changeVehicle(e.target.value)}
+                  >
+                    {external?.adapter.fleet?.vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {vehicleName(v.vehicle)}
+                        {v.vehicle.archived ? " (archiviert)" : ""}
+                      </option>
+                    )) ?? (
+                      <option value={vehicle.id}>{vehicleName(vehicle)}</option>
+                    )}
+                  </select>
+                </label>
+                {external && (
+                  <button
+                    className="button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (discard()) setAdding(true);
+                    }}
+                  >
+                    Fahrzeug hinzufügen
+                  </button>
+                )}
+              </div>
+              <div className="top-actions">
+                {adapter && (
+                  <span className="connection">
+                    <span className="private-dot" />
+                    {adapter.kind === "test"
+                      ? "Lokale Testakte"
+                      : needsLogin
+                        ? "Anmeldung nötig"
+                        : "Angemeldet"}
+                  </span>
+                )}
+                <button
+                  className="icon-button"
+                  title="Abmelden"
+                  aria-label="Abmelden"
+                  disabled={busy || !adapter}
+                  onClick={logout}
+                >
+                  <LogOut size={18} />
+                </button>
+              </div>
+            </header>
+            <main
+              id="main"
+              onInputCapture={() => {
+                dirty.current = true;
+              }}
+            >
+              <div className="page-heading">
+                <div>
+                  <h1>{active}</h1>
+                </div>
+                {!vehicle.archived && (
+                  <a className="button primary" href="#/erfassen">
+                    <Plus size={18} /> Eintrag hinzufügen
+                  </a>
+                )}
+              </div>
+              {!online && (
+                <div className="banner warning" role="status">
+                  Offline · Der angezeigte Stand wurde nicht erneut bestätigt.
+                  Eingaben bleiben in diesem Fenster. Entwürfe kannst du im
+                  Erfassungsbereich herunterladen.
+                </div>
+              )}
+              {adapter?.kind === "test" && (
+                <div className="banner test" role="status">
+                  Testmodus · Daten nur in diesem Browser. Kein Server- oder
+                  Mailzugriff.
+                </div>
+              )}
+              {error && (
+                <div role="alert" className="banner danger">
+                  <TriangleAlert size={20} />
+                  <div>
+                    {error}
+                    {/Anmeldung|erneut verbinden/.test(error) && (
+                      <div>
+                        <Btn onClick={connect}>Erneut verbinden</Btn>
+                      </div>
+                    )}
+                    {/Konflikt/.test(error) && (
+                      <div>
+                        <Btn
+                          onClick={() =>
+                            run(
+                              () => refresh(adapter, true),
+                              "Aktueller Stand geladen. Bitte deine Änderungen vergleichen.",
+                            )
+                          }
+                        >
+                          Aktuellen Stand laden
+                        </Btn>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {notice && (
+                <div className="banner success" role="status">
+                  <Check size={18} />
+                  {notice}
+                </div>
+              )}
+              {busy && (
+                <div role="status" className="progress">
+                  {progress || "Bitte warten · Ergebnis wird geprüft …"}
+                </div>
+              )}
+              {path === "/" && (
+                <Dashboard
+                  s={s}
+                  year={year}
+                  setYear={setYear}
+                  connected={!!adapter}
+                  adapter={adapter}
+                  summary={external?.adapter.dashboard}
+                />
+              )}
+              {isTank && (
+                <FuelView
+                  service={
+                    adapter instanceof CloudflareAdapter ? adapter : null
+                  }
+                  externalUrl={s.Settings[0].external_fuel_url}
+                  testMode={adapter.kind === "test"}
+                  onReconnect={connect}
+                />
+              )}
+              {path.startsWith("/historie") && (
+                <HistoryView
+                  filter={historyFilter}
+                  onFilter={
+                    external
+                      ? (filter) => {
+                          dirty.current = false;
+                          location.hash =
+                            "/historie?" +
+                            new URLSearchParams({
+                              filter: JSON.stringify(filter),
+                            });
+                        }
+                      : undefined
+                  }
+                  s={s}
+                  detailId={path.split("/")[2]}
+                  edit={edit}
+                  run={run}
+                  openDocument={openDocument}
+                />
+              )}
+              {path === "/erfassen" &&
+                !vehicle.archived &&
+                (preview ? (
+                  <ImportPreview
+                    key={preview.import_id ?? "preview"}
+                    initial={preview}
+                    initialCapture={previewCapture}
+                    captureSupported={
+                      adapter.kind === "test" || status.features?.capture === 1
+                    }
+                    s={s}
+                    adapter={adapter}
+                    run={run}
+                    busy={busy}
+                    onDone={async (reused) => {
+                      await refresh();
+                      setPreview(null);
+                      setNotice(
+                        reused
+                          ? "Dieses Paket war bereits gespeichert. Vorhandene Einträge wurden geladen."
+                          : "Import bestätigt gespeichert.",
+                      );
+                      location.hash = "/historie";
+                    }}
+                    onBack={() => setPreview(null)}
+                    setProgress={setProgress}
+                  />
+                ) : (
+                  <Capture
+                    s={s}
+                    adapter={adapter}
+                    onPreview={startPreview}
+                    run={run}
+                    busy={busy}
+                    supported={
+                      adapter.kind === "test" || status.features?.capture === 1
+                    }
+                    onReceiptDone={async () => {
+                      await refresh();
+                      location.hash = "/historie";
+                    }}
+                  />
+                ))}
+              {isVehicle && (
+                <>
+                  <nav className="tabs" aria-label="Fahrzeugbereiche">
+                    {[
+                      ["Stammdaten", "/fahrzeug"],
+                      ["Galerie", "/fahrzeug/galerie"],
+                      ["Dokumente", "/fahrzeug/dokumente"],
+                      ["Umbauten", "/fahrzeug/umbauten"],
+                      ["Termine", "/fahrzeug/termine"],
+                      ["Einstellungen", "/fahrzeug/einstellungen"],
+                    ].map(([title, to]) => (
+                      <a
+                        key={to}
+                        href={"#" + to}
+                        className={path === to ? "selected" : ""}
+                      >
+                        {title}
+                      </a>
+                    ))}
+                  </nav>
+                  {path === "/fahrzeug" && (
+                    <VehicleForm
+                      key={vehicle.revision}
+                      s={s}
+                      edit={edit}
+                      run={run}
+                      mutate={mutate}
+                      openDocument={openDocument}
+                      onPreview={startPreview}
+                    />
+                  )}
+                  {path === "/fahrzeug/galerie" && (
+                    <Gallery
+                      s={s}
+                      adapter={adapter}
+                      edit={edit}
+                      run={run}
+                      refresh={refresh}
+                      busy={busy}
+                    />
+                  )}
+                  {path === "/fahrzeug/dokumente" && (
+                    <Documents
+                      s={s}
+                      edit={edit}
+                      run={run}
+                      adapter={adapter}
+                      refresh={refresh}
+                      openDocument={openDocument}
+                      onPreview={startPreview}
+                    />
+                  )}
+                  {path === "/fahrzeug/umbauten" && (
+                    <section className="panel">
+                      <h2>Umbauten & Zubehör</h2>
+                      <p className="muted">
+                        Bestätigte Einbauten und offene Vorhaben.
+                        Abnahmeunterlagen bei der Arbeit verknüpfen.
+                      </p>
+                      {s.Work.filter(
+                        (w) => w.kind === "modification" && !w.voided,
+                      ).map((w) => (
+                        <a
+                          className="list-row"
+                          href={"#/historie/" + w.id}
+                          key={w.id}
+                        >
+                          <Wrench size={18} />
+                          <span>
+                            <strong>{w.title}</strong>
+                            <small>
+                              {w.modification_details?.status === "installed"
+                                ? "Eingebaut"
+                                : w.modification_details?.status === "removed"
+                                  ? "Ausgebaut"
+                                  : w.status === "planned"
+                                    ? "Geplant"
+                                    : "Erledigt"}{" "}
+                              · {date(w.date)}
+                            </small>
+                          </span>
+                          <ChevronRight size={18} />
+                        </a>
+                      ))}
+                      {!s.Work.some((w) => w.kind === "modification") && (
+                        <Empty title="Keine Umbauten">
+                          Lege beim Erfassen eine Arbeit mit der Art „Umbau“ an.
+                        </Empty>
+                      )}
+                    </section>
+                  )}
+                  {path === "/fahrzeug/termine" && (
+                    <Reminders
+                      s={s}
+                      edit={edit}
+                      run={run}
+                      mutate={mutate}
+                      onPreview={startPreview}
+                    />
+                  )}
 
-function Btn({children,onClick,primary=false,disabled=false,type='button'}:{children:ReactNode;onClick?:()=>void;primary?:boolean;disabled?:boolean;type?:'button'|'submit'}){return <button type={type} className={primary?'button primary':'button'} disabled={disabled} onClick={onClick}>{children}</button>;}
-function Empty({title,children}:{title:string;children:ReactNode}){return <div className="empty"><FolderOpen size={28}/><h3>{title}</h3><p>{children}</p></div>;}
-const workKinds={maintenance:'Wartung',repair:'Reparatur',modification:'Umbau',inspection:'HU / Prüfung',other:'Andere Arbeit'};
-const dueLabels={due:'Fällig',soon:'Bald fällig',later:'Geplant',paused:'Erledigt / pausiert'};
-const docTypes={invoice:'Rechnung',receipt:'Beleg',contract:'Vertrag',approval:'ABE / Genehmigung',inspection:'Prüfbericht',service_history:'Serviceheft',photo:'Foto',other:'Sonstiges'};
-type Runner=(action:()=>Promise<void>,success?:string)=>Promise<boolean>;
-export function App({external}:{external?:{adapter:CloudflareAdapter;config:Config;initial:any;logout:()=>Promise<void>}}={}){
- const [previewCapture,setPreviewCapture]=useState<CaptureMetadata|undefined>();
- const [checking,setChecking]=useState(!external),[remember,setRemember]=useState(true),[needsLogin,setNeedsLogin]=useState(false),[accountEpoch,setAccountEpoch]=useState(0);
- const [config,setConfig]=useState<Config|null>(external?.config??null),[google,setGoogle]=useState<GoogleConnection|null>(null),[adapter,setAdapter]=useState<Adapter|null>(external?.adapter??null),[state,setState]=useState<State|null>(external?.initial.state??null),[status,setStatus]=useState<any>(external?.initial.status??{}),[route,setRoute]=useState(location.hash.slice(1)||'/'),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[online,setOnline]=useState(navigator.onLine),[year,setYear]=useState(today().slice(0,4)),[preview,setPreview]=useState<ImportPackage|null>(null),[progress,setProgress]=useState(''),[printMode,setPrintMode]=useState<'service'|'costs'|'sale'>('service'),[includeCost,setIncludeCost]=useState(false),[showPrintPreview,setShowPrintPreview]=useState(false);
- useEffect(()=>{let alive=true;(async()=>{try{if(external)return;const response=await fetch('./config.json',{cache:'no-store'});if(!response.ok)throw Error('Konfiguration konnte nicht geladen werden.');const c:Config=await response.json();if(!alive)return;setConfig(c);if(c.backend==='cloudflare')return;const a=googleConnection(c);setGoogle(a);if(a.ready()){if(a instanceof SessionAdapter){if(await a.restore()){const result=await a.call('read');if(alive){setAdapter(a);setState(result.state);setStatus(result.status);}}}else await a.loadLibrary();}}catch(e){if(alive)setError(e instanceof Error?e.message:'Anmeldung konnte nicht geprüft werden.');}finally{if(alive)setChecking(false);}})();const navigate=()=>{setRoute(location.hash.slice(1)||'/');window.scrollTo({top:0,left:0});};const connected=()=>setOnline(navigator.onLine);addEventListener('hashchange',navigate);addEventListener('online',connected);addEventListener('offline',connected);return()=>{alive=false;removeEventListener('hashchange',navigate);removeEventListener('online',connected);removeEventListener('offline',connected);};},[]);
- const run:Runner=async(action,success)=>{if(busy)return false;setBusy(true);setError('');setNotice('');try{await action();if(success)setNotice(success);return true;}catch(e){if(e instanceof SignInRequired)setNeedsLogin(true);setError(e instanceof Error?e.message:'Die Aktion konnte nicht bestätigt werden.');return false;}finally{setBusy(false);setProgress('');}};
- async function refresh(a=adapter,fresh=false){if(!a)throw Error('Bitte Google verbinden oder den getrennten Testmodus öffnen.');const result=await a.call('read',fresh?{fresh:true}:{});setState(result.state);setStatus(result.status);}
- async function mutate(action:string,arg:any){if(!adapter)throw Error('Bitte erst verbinden.');await adapter.call(action,arg);await refresh();}
- const s=state??emptyState(),path=route.split('?')[0],vehicle=s.Vehicles[0],isTank=path==='/tankstellen'||path==='/fahrzeug/tankstellen',isVehicle=path.startsWith('/fahrzeug')&&!isTank,active=isTank?'Tankstellen':path.startsWith('/historie')?'Historie':path==='/erfassen'?'Erfassen':isVehicle?'Fahrzeug':'Übersicht';
- const connect=()=>run(async()=>{if(external){await refresh(external.adapter);setNeedsLogin(false);return;}if(!google)throw Error('Konfiguration wird geladen.');const before=adapter?.accountId||status.account_email;if(google instanceof SessionAdapter)await google.authorize(remember);else await google.authorize();const result=await google.call('read'),after=('accountId' in google&&google.accountId)||result.status.account_email;if(before&&after&&before!==after){setPreview(null);setAccountEpoch(x=>x+1);location.hash='/';}setNeedsLogin(false);setAdapter(google);setState(result.state);setStatus(result.status);});
- const enterTest=()=>run(async()=>{const a=new TestAdapter();await refresh(a);setNeedsLogin(false);setAdapter(a);});
- const edit=(table:Table,row:Meta,patch:Record<string,unknown>)=>run(()=>mutate('edit',{table,id:row.id,revision:row.revision,patch}),'Änderung bestätigt gespeichert.');
- async function openDocument(d:Doc,preview=false){if(!adapter)throw Error('Bitte verbinden.');const f=await adapter.call('document',{id:d.id});if(!f)throw Error('Originaldatei fehlt im lokalen Speicher.');const bytes=base64Bytes(f.base64);if(preview){const url=URL.createObjectURL(new Blob([bytes],{type:f.mime}));const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}else download(bytes,d.source_filename??d.title,f.mime);}
- const startPreview=(p:ImportPackage,capture?:CaptureMetadata)=>{setPreviewCapture(capture);setPreview(validatePackage(p));location.hash='/erfassen';};
- const logout=()=>run(async()=>{if(external)await external.logout();else if(adapter?.kind==='google')await google?.disconnect();setAdapter(null);setState(null);setPreview(null);setNeedsLogin(false);},'Abgemeldet.');
- if(!adapter)return <LoginView checking={checking} busy={busy} ready={google?.ready()??false} persistent={google instanceof SessionAdapter} remember={remember} onRemember={setRemember} onConnect={connect} onTest={enterTest} error={error} notice={notice}/>;
- if(!hasVehicle(s)){const setup=<VehicleSetup busy={busy} error={error} testMode={adapter.kind==='test'} onSave={input=>run(()=>mutate('createVehicle',input))} onLogout={external?undefined:logout}/>;return external?<CloudStart adapter={external.adapter} onDone={async()=>{await refresh();location.hash='/';}} onLogout={logout}>{setup}</CloudStart>:setup;}
-
- return <PhotoProvider adapter={adapter} accountKey={String(accountEpoch)+':'+(adapter.accountId??adapter.kind)}><><a className="skip" href="#main">Zum Inhalt</a><div className="app-shell no-print" key={accountEpoch}><aside className="sidebar"><a className="brand" href="#/"><span className="brand-mark"><CarFront size={25}/></span><span>Fahrzeugakte</span></a><nav aria-label="Hauptnavigation">{[[LayoutDashboard,'Übersicht','/'],[History,'Historie','/historie'],[Plus,'Erfassen','/erfassen'],[CarFront,'Fahrzeug','/fahrzeug'],[Fuel,'Tankstellen','/tankstellen']] .map(([Icon,label,to])=><a key={String(label)} href={'#'+to} className={active===label?'nav-item active':'nav-item'} aria-current={active===label?'page':undefined}>{typeof Icon!=='string'&&<Icon size={20}/>}<span>{String(label)}</span></a>)}</nav><div className="sidebar-bottom"><a href="#/fahrzeug/einstellungen"><Settings2 size={17}/> Einstellungen</a></div></aside><div className="workspace"><header className="topbar"><span>{vehicleName(vehicle)}</span><div className="top-actions">{adapter&&<span className="connection"><span className="private-dot"/>{adapter.kind==='test'?'Lokale Testakte':needsLogin?'Anmeldung nötig':adapter.kind==='cloudflare'?'Angemeldet':'Google verbunden'}</span>}<button className="icon-button" title="Abmelden" aria-label="Abmelden" disabled={busy||!adapter} onClick={logout}><LogOut size={18}/></button></div></header><main id="main"><div className="page-heading"><div><h1>{active}</h1></div><a className="button primary" href="#/erfassen"><Plus size={18}/> Eintrag hinzufügen</a></div>
- {!online&&<div className="banner warning" role="status">Offline · Der angezeigte Stand wurde nicht erneut bestätigt. Eingaben bleiben in diesem Fenster. Entwürfe kannst du im Erfassungsbereich herunterladen.</div>}
- {adapter?.kind==='test'&&<div className="banner test" role="status">Testmodus · Daten nur in diesem Browser. Kein Google- oder Mailzugriff.</div>}
- {(!adapter||needsLogin)&&<section className="setup-banner"><Cloud size={28}/><div><h2>Deine Akte verbinden</h2><p>{google?.ready()?'Verbinde dein Google-Konto, um deine private Akte zu öffnen.':'Die Kontoeinrichtung ist vorbereitet. Ergänze deine Domain und Google-Konfiguration anhand der Einrichtungshilfe.'}</p></div><div className="button-group"><Btn primary onClick={connect} disabled={busy}>Mit Google verbinden</Btn><Btn onClick={enterTest} disabled={busy}>Testmodus öffnen</Btn><a href="#/fahrzeug/einstellungen">Einrichtung ansehen <ArrowUpRight size={14}/></a></div></section>}
- {error&&<div role="alert" className="banner danger"><TriangleAlert size={20}/><div>{error}{/Anmeldung|erneut verbinden/.test(error)&&<div><Btn onClick={connect}>Erneut verbinden</Btn></div>}{/Konflikt/.test(error)&&<div><Btn onClick={()=>run(()=>refresh(),'Aktueller Stand geladen. Bitte deine Änderungen vergleichen.')}>Aktuellen Stand laden</Btn></div>}</div></div>}
- {notice&&<div className="banner success" role="status"><Check size={18}/>{notice}</div>}{busy&&<div role="status" className="progress">{progress||'Bitte warten · Ergebnis wird geprüft …'}</div>}
- {path==='/'&&<Dashboard s={s} year={year} setYear={setYear} connected={!!adapter} adapter={adapter}/>}
- {isTank&&<FuelView service={adapter instanceof SessionAdapter||adapter instanceof CloudflareAdapter?adapter:null} externalUrl={s.Settings[0].external_fuel_url} testMode={adapter.kind==='test'} onReconnect={connect}/>}
- {path.startsWith('/historie')&&<HistoryView s={s} detailId={path.split('/')[2]} edit={edit} run={run} openDocument={openDocument}/>}
- {path==='/erfassen'&&(preview?<ImportPreview key={preview.import_id??'preview'} initial={preview} initialCapture={previewCapture} captureSupported={adapter.kind==='test'||status.features?.capture===1} s={s} adapter={adapter} run={run} busy={busy} onDone={async(reused)=>{await refresh();setPreview(null);setNotice(reused?'Dieses Paket war bereits gespeichert. Vorhandene Einträge wurden geladen.':'Import bestätigt gespeichert.');location.hash='/historie';}} onBack={()=>setPreview(null)} setProgress={setProgress}/>:<Capture s={s} adapter={adapter} onPreview={startPreview} run={run} busy={busy} supported={adapter.kind==='test'||status.features?.capture===1} onReceiptDone={async()=>{await refresh();location.hash='/historie';}}/>)}
- {isVehicle&&<><nav className="tabs" aria-label="Fahrzeugbereiche">{[['Stammdaten','/fahrzeug'],['Galerie','/fahrzeug/galerie'],['Dokumente','/fahrzeug/dokumente'],['Umbauten','/fahrzeug/umbauten'],['Termine','/fahrzeug/termine'],['Einstellungen','/fahrzeug/einstellungen']].map(([title,to])=><a key={to} href={'#'+to} className={path===to?'selected':''}>{title}</a>)}</nav>
- {path==='/fahrzeug'&&<VehicleForm key={vehicle.revision} s={s} edit={edit} run={run} mutate={mutate} openDocument={openDocument} onPreview={startPreview}/>}
- {path==='/fahrzeug/galerie'&&<Gallery s={s} adapter={adapter} edit={edit} run={run} refresh={refresh} busy={busy}/>}
- {path==='/fahrzeug/dokumente'&&<Documents s={s} edit={edit} run={run} adapter={adapter} refresh={refresh} openDocument={openDocument} onPreview={startPreview}/>}
- {path==='/fahrzeug/umbauten'&&<section className="panel"><h2>Umbauten & Zubehör</h2><p className="muted">Bestätigte Einbauten und offene Vorhaben. Abnahmeunterlagen bei der Arbeit verknüpfen.</p>{s.Work.filter(w=>w.kind==='modification'&&!w.voided).map(w=><a className="list-row" href={'#/historie/'+w.id} key={w.id}><Wrench size={18}/><span><strong>{w.title}</strong><small>{w.modification_details?.status==='installed'?'Eingebaut':w.modification_details?.status==='removed'?'Ausgebaut':w.status==='planned'?'Geplant':'Erledigt'} · {date(w.date)}</small></span><ChevronRight size={18}/></a>)}{!s.Work.some(w=>w.kind==='modification')&&<Empty title="Keine Umbauten">Lege beim Erfassen eine Arbeit mit der Art „Umbau“ an.</Empty>}</section>}
- {path==='/fahrzeug/termine'&&<Reminders s={s} edit={edit} run={run} mutate={mutate} onPreview={startPreview}/>}
-
- {path==='/fahrzeug/einstellungen'&&<SettingsView s={s} config={config} status={status} adapter={adapter} edit={edit} run={run} refresh={fresh=>refresh(adapter,fresh)} setProgress={setProgress} mutate={mutate}/>}
- </>}
- </main></div></div>
- <div className="print-tools no-print"><span>Drucken:</span><select aria-label="Druckfassung" value={printMode} onChange={e=>setPrintMode(e.target.value as any)}><option value="service">Serviceheft</option><option value="costs">Kostenübersicht</option><option value="sale">Verkaufsfassung</option></select><label><input type="checkbox" checked={includeCost} onChange={e=>setIncludeCost(e.target.checked)}/> Kosten zeigen</label><Btn onClick={()=>setShowPrintPreview(!showPrintPreview)}>Druckvorschau</Btn><Btn onClick={()=>window.print()}><Printer size={16}/> Drucken / PDF</Btn></div>
- <div className={showPrintPreview?'screen-print-preview':undefined}><PrintView s={s} mode={printMode} year={year} includeCost={includeCost}/></div></></PhotoProvider>;
+                  {path === "/fahrzeug/einstellungen" && (
+                    <SettingsView
+                      s={s}
+                      config={config}
+                      status={status}
+                      adapter={adapter}
+                      edit={edit}
+                      run={run}
+                      refresh={(fresh) => refresh(adapter, fresh)}
+                      setProgress={setProgress}
+                      mutate={mutate}
+                    />
+                  )}
+                </>
+              )}
+              {vehicle.archived && (
+                <div className="banner warning">
+                  Dieses Fahrzeug ist archiviert. Angaben bleiben lesbar; neue
+                  Änderungen und Erinnerungen sind pausiert.
+                </div>
+              )}
+              {external?.adapter.pages
+                .filter((p) => p.hasMore)
+                .map((p) => (
+                  <button
+                    className="button"
+                    disabled={busy}
+                    key={p.table}
+                    onClick={() =>
+                      run(async () => {
+                        const out = await external.adapter.loadMore(p);
+                        setState(out.state);
+                      })
+                    }
+                  >
+                    Weitere{" "}
+                    {(
+                      {
+                        Expenses: "Ausgaben",
+                        Work: "Arbeiten",
+                        Documents: "Dokumente",
+                        Reminders: "Termine",
+                        Odometer: "Kilometerstände",
+                        NotificationLog: "Versandvorgänge",
+                      } as any
+                    )[p.table] ?? "Einträge"}{" "}
+                    laden
+                  </button>
+                ))}
+              {external && path === "/fahrzeug" && (
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      if (!discard()) return;
+                      await external.adapter.call("archive", {
+                        archived: !vehicle.archived,
+                      });
+                      await onReloadFleet?.();
+                    })
+                  }
+                >
+                  {vehicle.archived
+                    ? "Fahrzeug reaktivieren"
+                    : "Fahrzeug archivieren"}
+                </button>
+              )}
+            </main>
+          </div>
+        </div>
+        <div className="print-tools no-print">
+          <span>Drucken:</span>
+          <select
+            aria-label="Druckfassung"
+            value={printMode}
+            onChange={(e) => setPrintMode(e.target.value as any)}
+          >
+            <option value="service">Serviceheft</option>
+            <option value="costs">Kostenübersicht</option>
+            <option value="sale">Verkaufsfassung</option>
+          </select>
+          <label>
+            <input
+              type="checkbox"
+              checked={includeCost}
+              onChange={(e) => setIncludeCost(e.target.checked)}
+            />{" "}
+            Kosten zeigen
+          </label>
+          <Btn
+            onClick={() =>
+              run(async () => {
+                setPrintState(
+                  adapter.kind === "cloudflare"
+                    ? await adapter.call("export")
+                    : s,
+                );
+                setShowPrintPreview(!showPrintPreview);
+              })
+            }
+          >
+            Druckvorschau
+          </Btn>
+          <Btn
+            onClick={() =>
+              run(async () => {
+                setPrintState(
+                  adapter.kind === "cloudflare"
+                    ? await adapter.call("export")
+                    : s,
+                );
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() => window.print()),
+                );
+              })
+            }
+          >
+            <Printer size={16} /> Drucken / PDF
+          </Btn>
+        </div>
+        <div className={showPrintPreview ? "screen-print-preview" : undefined}>
+          <PrintView
+            s={printState ?? s}
+            mode={printMode}
+            year={year}
+            includeCost={includeCost}
+          />
+        </div>
+      </>
+    </PhotoProvider>
+  );
 }
-function Dashboard({s,year,setYear,connected,adapter}:{s:State;year:string;setYear:(v:string)=>void;connected:boolean;adapter:Adapter|null}){const total=totals(s,year),odo=currentOdometer(s),due=s.Reminders.filter(x=>!x.voided&&!x.archived),recent=[...s.Expenses,...s.Work].filter(x=>!x.archived&&!x.voided).sort((a,b)=>(b.date??'').localeCompare(a.date??'')).slice(0,5),intervals=fuelIntervals(s),max=Math.max(...total.months,1),knownYears=s.Expenses.flatMap(x=>x.date?[x.date.slice(0,4)]:[]);return <>
- <VehicleHero s={s}/>
- <div className="section-heading"><h2>Kosten</h2><select aria-label="Jahr der Kostenübersicht" value={year} onChange={e=>setYear(e.target.value)}>{[...new Set([today().slice(0,4),...knownYears,year])].sort().reverse().map(y=><option key={y}>{y}</option>)}</select></div>
- <div className="metrics"><div className="metric"><span>Ist-Ausgaben {year}</span><strong>{connected?money(total.expenses):'—'}</strong><small>Einschließlich Fahrzeugkauf · netto nach Erstattungen</small></div><div className="metric"><span>Betriebskosten {year}</span><strong>{connected?money(total.operating):'—'}</strong><small>Ohne Fahrzeugkauf und Verkauf</small></div><div className="metric"><span>Bestätigter Kilometerstand</span><strong>{odo?odo.km.toLocaleString('de-DE')+' km':'Noch offen'}</strong><small>{odo?'Stand: '+date(odo.date):'Den ersten bestätigten Stand ergänzen'}</small>{odo&&today()>new Date(Date.parse(odo.date+'T12:00:00Z')+30*86400000).toISOString().slice(0,10)&&<small className="warning-text">Stand älter als 30 Tage</small>}</div></div>
- {(total.unknown>0||total.foreign>0||total.undated>0)&&<p className="muted">Separat offen: {total.unknown} unbekannte Beträge, {total.foreign} Beträge in anderer/unklarer Währung und {total.undated} Buchungen ohne Datum.</p>}{total.income>0&&<p>Einnahmen {year}: {money(total.income)} (getrennt von Ausgaben)</p>}
- {odometerWarnings(s).length>0&&<div className="banner warning">Die Kilometerhistorie enthält fallende Werte. Bitte im Fahrzeugbereich prüfen.</div>}
- <div className="two-column"><section className="panel"><div className="section-heading"><h2>Als Nächstes</h2><a href="#/fahrzeug/termine">Alle Termine <ArrowUpRight size={15}/></a></div>{due.length?due.map(r=><a className="list-row" href={'#/fahrzeug/termine?entry='+r.id} key={r.id}><span className="row-icon"><Wrench size={18}/></span><span><strong>{r.title}</strong><small>{r.due_date?date(r.due_date):'Datum offen'}{r.due_odometer_km!==null?' · '+r.due_odometer_km.toLocaleString('de-DE')+' km':''}</small></span><span className={'tag '+dueStatus(r,today(),odo?.km??null)}>{dueLabels[dueStatus(r,today(),odo?.km??null)]}</span></a>):<Empty title="Keine Wartungsregel hinterlegt">Ergänze bestätigte Termine oder Kilometergrenzen. Es sind keine pauschalen Wartungsintervalle vorbelegt.</Empty>}<a className="subtle-link" href="#/fahrzeug/termine"><Plus size={16}/> Termin ergänzen</a></section>
- <section className="panel"><div className="section-heading"><h2>Ausgabenverlauf</h2><span className="muted">{year}</span></div><div className="chart" aria-label={'Monatliche Ausgaben '+year}>{total.months.map((v,i)=><div key={i} className="chart-col" title={new Intl.DateTimeFormat('de-DE',{month:'long'}).format(new Date(2020,i,1))+': '+money(v)}><div className="bar-space"><span className={v<0?'bar refund':'bar'} style={{height:Math.max(2,Math.abs(v)/max*120)+'px'}}/></div><small>{['J','F','M','A','M','J','J','A','S','O','N','D'][i]}</small><span className="sr-only">{money(v)}</span></div>)}</div>{!s.Expenses.length&&<p className="muted center">Noch keine Ausgaben.</p>}<div className="category-lines">{Object.entries(total.byCategory).filter(([c])=>!s.Settings[0].hidden_categories.includes(c as any)).map(([c,v])=><div key={c}><span><i/>{c}</span><strong>{money(v)}</strong></div>)}</div></section></div>
- <section className="panel"><div className="section-heading"><h2>Letzte Einträge</h2><a href="#/historie">Zur Historie <ArrowUpRight size={15}/></a></div>{recent.length?recent.map(x=><a className="list-row" href={'#/historie/'+x.id} key={x.id}><span className="row-icon">{'amount_cents' in x?<FileText size={18}/>:<Wrench size={18}/>}</span><span><strong>{x.title}</strong><small>{date(x.date)} · {'category' in x?x.category??'Kategorie offen':workKinds[x.kind]}</small></span><strong>{'amount_cents' in x?money(x.amount_cents,x.currency):x.status==='planned'?'Geplant':'Arbeit'}</strong><ChevronRight size={16}/></a>):<Empty title="Keine Einträge">Erfasse eine Ausgabe oder Arbeit. Dokumente kannst du auch ohne Buchung ablegen.</Empty>}</section>
- {s.Work.some(w=>w.status==='planned'&&!w.voided)&&<section className="panel"><h2>Offene Vorhaben</h2>{s.Work.filter(w=>w.status==='planned'&&!w.voided).map(w=><a className="list-row" key={w.id} href={'#/historie/'+w.id}><strong>{w.title}</strong><span>Schätzung: {money(w.estimated_cost_cents)}</span></a>)}<p className="muted">Geplante Kosten sind in den Ist-Ausgaben nicht enthalten.</p></section>}
- {intervals.length>0&&<section className="panel"><h2>Verbrauch aus vollständigen Tankintervallen</h2>{intervals.slice(-3).map(x=><p key={x.to}>{date(x.from)} bis {date(x.to)} · {x.km} km · {x.consumption.toLocaleString('de-DE',{maximumFractionDigits:1})} l/100 km</p>)}</section>}
- </>;}
-function Capture({s,adapter,onPreview,run,busy,supported,onReceiptDone}:{s:State;adapter:Adapter;onPreview:(p:ImportPackage,capture?:CaptureMetadata)=>void;run:Runner;busy:boolean;supported:boolean;onReceiptDone:()=>Promise<void>}){const [mode,setMode]=useState<'manual'|'chat'|'receipt'>('receipt'),[text,setText]=useState(''),[kind,setKind]=useState('expense'),[cat,setCat]=useState<string>(categories[0]),[files,setFiles]=useState<File[]>([]),[manualPerformed,setManualPerformed]=useState<WorkInput['performed_by']>('unknown'),[manualWorkshop,setManualWorkshop]=useState('');const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{const p=blankPackage(),title=String(f.get('title')).trim(),d=String(f.get('date')??'')||null,km=number(String(f.get('km')??''));p.vehicle_label=vehicleName(s.Vehicles[0])||null;if(kind==='expense'){const expense:ExpenseInput={ref:'expense1',title,category:cat as any,date:d,odometer_km:km,amount_cents:cents(String(f.get('amount'))),currency:String(f.get('currency'))||null,vendor:String(f.get('vendor'))||null,invoice_number:String(f.get('invoice'))||null,document_refs:[],notes:String(f.get('notes'))||null,cashflow_type:f.get('income')?'income':'expense'};if(cat==='Tanken')expense.fuel={liters:number(String(f.get('liters'))),fuel_type:String(f.get('fuel_type'))||null,full_tank:f.get('tank')==='unknown'?null:f.get('tank')==='full',missed_previous_fillup:f.get('missed')==='unknown'?null:f.get('missed')==='yes',station_name:String(f.get('station'))||null};if(f.get('part_description'))expense.items=[{description:String(f.get('part_description')),part_number:String(f.get('part_number'))||null,quantity:number(String(f.get('quantity'))),unit:String(f.get('unit'))||null,specification:String(f.get('spec'))||null}];p.expenses.push(expense);}else if(kind==='work'){const w:WorkInput={ref:'work1',title,kind:String(f.get('work_kind')) as any,status:String(f.get('status')) as any,date:d,odometer_km:km,performed_by:String(f.get('performed')) as any,description:String(f.get('notes'))||null,expense_refs:[],document_refs:[],estimated_cost_cents:cents(String(f.get('estimate')??''))};if(f.get('part_description'))w.parts=[{description:String(f.get('part_description')),part_number:String(f.get('part_number'))||null,quantity:number(String(f.get('quantity'))),unit:String(f.get('unit'))||null,specification:String(f.get('spec'))||null}];if(w.kind==='modification')w.modification_details={manufacturer:String(f.get('manufacturer'))||null,part_number:String(f.get('part_number'))||null,approval_number:String(f.get('approval'))||null,status:String(f.get('mod_status')) as any};p.work.push(w);}else{p.documents.push({ref:'doc1',title,source_filename:null,document_type:String(f.get('doctype')) as any});}onPreview(p,kind==='work'&&manualWorkshop?{workshops_by_work_ref:{work1:manualWorkshop}}:undefined);});};return <section className={"panel capture"+(mode==='receipt'?' capture-wide':'')}><div className="segmented"><button className={mode==='receipt'?'selected':''} onClick={()=>setMode('receipt')}>Beleg einlesen</button><button className={mode==='manual'?'selected':''} onClick={()=>setMode('manual')}>Manuell</button><button className={mode==='chat'?'selected':''} onClick={()=>setMode('chat')}>Aus ChatGPT</button></div>{mode==='receipt'?<Suspense fallback={<p role="status">Belegerfassung wird geladen …</p>}><ReceiptCapture s={s} adapter={adapter} run={run} onDone={onReceiptDone} busy={busy} supported={supported}/></Suspense>:mode==='chat'?<><h2>JSON einfügen</h2><p className="muted">Kopiere das Paket aus ChatGPT. Im nächsten Schritt prüfst du Einträge und ordnest Originaldateien zu.</p><Field label="JSON aus ChatGPT"><textarea value={text} onChange={e=>setText(e.target.value)} rows={13} placeholder="JSON hier einfügen …" spellCheck={false}/></Field><div className="button-group"><Btn primary onClick={()=>run(async()=>onPreview(parseImport(text)))}>Vorschau öffnen</Btn><Field label="Oder JSON-Datei auswählen"><input type="file" accept=".json,application/json" onChange={e=>{const file=e.target.files?.[0];if(file)run(async()=>{if(file.size>1024*1024)throw Error('JSON-Datei größer als 1 MiB.');setText(await file.text());});}}/></Field><Btn onClick={()=>download(text,'Fahrzeugakte-Entwurf.json','application/json')}><Download size={16}/> Entwurf herunterladen</Btn></div></>:<><h2>Was möchtest du erfassen?</h2><form onSubmit={submit}><Field label="Eintragsart"><select value={kind} onChange={e=>setKind(e.target.value)}><option value="expense">Ausgabe / Einnahme</option><option value="work">Arbeit / Vorhaben</option><option value="document">Nur Dokument</option></select></Field><div className="form-grid"><Field label="Titel"><input name="title" required maxLength={500} placeholder={captureExample(kind,cat)}/></Field>{kind==='expense'&&<Field label="Kategorie"><select value={cat} onChange={e=>setCat(e.target.value)}>{categories.slice(0,3).map(c=><option key={c}>{c}</option>)}<optgroup label="Weitere Kategorien">{categories.slice(3).map(c=><option key={c}>{c}</option>)}</optgroup></select></Field>}{kind!=='document'&&<><Field label={kind==='work'?'Tatsächliches Arbeitsdatum (optional)':'Datum (optional)'} hint="Unbekannte historische Angaben leer lassen."><input type="date" name="date"/></Field><Field label="Kilometerstand (optional)"><input name="km" inputMode="decimal" placeholder="Unbekannt"/></Field></>}{kind==='expense'&&<><Field label="Betrag (optional)" hint="Leer = unbekannt. 0 = ausdrücklich kostenfrei. Erstattungen negativ."><input name="amount" inputMode="decimal" placeholder="0,00"/></Field><Field label="Währung"><input name="currency" defaultValue="EUR" maxLength={3} pattern="[A-Z]{3}"/></Field></>}{kind==='work'&&<><Field label="Art der Arbeit"><select name="work_kind">{Object.entries(workKinds).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></Field><Field label="Status"><select name="status"><option value="completed">Bestätigt durchgeführt</option><option value="planned">Geplant</option></select></Field><Field label="Durchgeführt von"><select name="performed" value={manualPerformed} onChange={e=>{const value=e.target.value as WorkInput['performed_by'];setManualPerformed(value);setManualWorkshop(value==='self'?s.Settings[0].self_workshop_id??'':'');}}><option value="unknown">Noch offen</option><option value="self">Eigenleistung</option><option value="workshop">Werkstatt</option></select></Field><WorkshopSelect settings={s.Settings[0]} value={manualWorkshop} onChange={setManualWorkshop} disabled={!supported}/></>}{kind==='document'&&<Field label="Dokumenttyp"><select name="doctype">{Object.entries(docTypes).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></Field>}</div>
- {kind==='expense'&&cat==='Tanken'&&<fieldset><legend>Tankvorgang</legend><div className="form-grid"><Field label="Liter"><input name="liters" inputMode="decimal"/></Field><Field label="Kraftstoff"><select name="fuel_type"><option value="">Unbekannt</option>{['E5','E10','Diesel','Andere'].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Betankung"><select name="tank"><option value="unknown">Unbekannt</option><option value="full">Vollgetankt</option><option value="partial">Teilbetankung</option></select></Field><Field label="Vorheriger Tankvorgang ausgelassen?"><select name="missed"><option value="unknown">Unbekannt</option><option value="no">Nein, alle erfasst</option><option value="yes">Ja, Lücke vorhanden</option></select></Field><Field label="Tankstelle (optional)"><input name="station"/></Field></div></fieldset>}
- {kind!=='document'&&<details><summary>Weitere Details</summary><div className="form-grid">{kind==='expense'?<><Field label="Händler / Werkstatt"><input name="vendor"/></Field><Field label="Rechnungsnummer"><input name="invoice"/></Field><label className="check"><input type="checkbox" name="income"/> Einnahme, z. B. Fahrzeugverkauf</label></>:<><Field label="Geschätzte Kosten (nur Planung)"><input name="estimate" inputMode="decimal"/></Field><Field label="Hersteller (Umbau)"><input name="manufacturer"/></Field><Field label="Genehmigungsnummer (Umbau)"><input name="approval"/></Field><Field label="Bestätigter Ein-/Ausbaustatus"><select name="mod_status"><option value="planned">Geplant</option><option value="installed">Eingebaut</option><option value="removed">Ausgebaut</option></select></Field></>}<Field label="Teil / Betriebsstoff"><input name="part_description"/></Field><Field label="Teilenummer"><input name="part_number"/></Field><Field label="Menge"><input name="quantity" inputMode="decimal"/></Field><Field label="Einheit"><input name="unit"/></Field><Field label="Bestätigte Freigabe / Spezifikation"><input name="spec"/></Field><Field label="Notizen"><textarea name="notes" rows={3}/></Field></div></details>}
- <p className="muted">Originale und bereits bezahlte Rechnungen verknüpfst du in der Vorschau. Eine Arbeit erzeugt keine zusätzliche Ausgabe.</p><Btn type="submit" primary>Weiter zur Vorschau <ChevronRight size={16}/></Btn></form></>}</section>;}
-function ImportPreview({initial,initialCapture,captureSupported,s,adapter,run,busy,onDone,onBack,setProgress}:{initial:ImportPackage;initialCapture?:CaptureMetadata;captureSupported:boolean;s:State;adapter:Adapter|null;run:Runner;busy:boolean;onDone:(reused?:boolean)=>Promise<void>;onBack:()=>void;setProgress:(x:string)=>void}){
- const [capture,setCapture]=useState<CaptureMetadata>(initialCapture??{});
- const [p,setP]=useState(clone(initial)),[raw,setRaw]=useState(JSON.stringify(initial,null,2)),[files,setFiles]=useState<File[]>([]),[mapping,setMapping]=useState<Record<string,number|null>>({}),[existingDocs,setExistingDocs]=useState<Record<string,string>>({}),[allowMissing,setAllowMissing]=useState(false),[confirmRules,setConfirmRules]=useState(false),[reason,setReason]=useState(''),[links,setLinks]=useState<Record<string,string[]>>({}),[operation,setOperation]=useState(crypto.randomUUID()),[frozen,setFrozen]=useState(false),[hashes,setHashes]=useState<Record<string,string>>({});
- function change(next:ImportPackage){if(frozen)return;setP(next);setRaw(JSON.stringify(next,null,2));setOperation(crypto.randomUUID());}
- async function selectFiles(input:File[]){const prepared=await Promise.all(input.map(prepareFile));setFiles(input);setMapping(autoMatch(p.documents,input));setHashes(Object.fromEntries(prepared.map((f,i)=>[String(i),f.sha256])));setOperation(crypto.randomUUID());}
- const conflicts=duplicates(s,p,Object.fromEntries(p.documents.flatMap(d=>mapping[d.ref]!=null?[[d.ref,hashes[String(mapping[d.ref])]]]:[])));
- const save=()=>run(async()=>{if(!adapter)throw Error('Bitte Google verbinden oder bewusst den getrennten Testmodus öffnen.');validatePackage(p);validateCapture(capture,p,s);if(Object.keys(capture).length&&!captureSupported)throw Error('Bitte zuerst die neue Apps-Script-Version bereitstellen.');if(p.reminders.length&&!confirmRules)throw Error('Bitte die neuen Erinnerungsregeln bestätigen.');const missing=p.documents.filter(d=>mapping[d.ref]==null&&!existingDocs[d.ref]);if(missing.length&&!allowMissing)throw Error('Noch fehlende Originale bitte zuordnen oder bewusst als fehlend bestätigen.');setFrozen(true);const docs:Record<string,string|null>={};let i=0;for(const d of p.documents){const index=mapping[d.ref];if(existingDocs[d.ref]){docs[d.ref]=existingDocs[d.ref];continue;}if(index==null){docs[d.ref]=null;continue;}setProgress(`Originale prüfen und hochladen: ${++i} von ${p.documents.length}`);const f=await prepareFile(files[index]);const u=await adapter.call('upload',{operation_id:operation,file:f});docs[d.ref]=u.id;}setProgress('Einträge gemeinsam speichern und bestätigen …');const result=await adapter.call('commit',{operation_id:operation,package:p,documents:docs,allow_missing:allowMissing,confirm_reminders:confirmRules,duplicate_override_reason:reason||null,links,...(Object.keys(capture).length?{capture}:{})});await onDone(result.reused===true);});
- return <section className="panel"><div className="section-heading"><h2>Import prüfen</h2><Btn onClick={onBack} disabled={frozen}>Zurück</Btn></div><p>{p.expenses.length} Ausgaben · {p.work.length} Arbeiten · {p.documents.length} Dokumente · {p.reminders.length} Regeln</p>{p.warnings.length>0&&<div className="banner warning"><ul>{p.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
- <fieldset disabled={frozen}><legend>Einträge vor dem Speichern bearbeiten</legend>{p.expenses.map((e,i)=><div className="review-entry" key={e.ref}><strong>Ausgabe {i+1}</strong><div className="form-grid"><Field label="Titel"><input value={e.title} onChange={x=>{const q=clone(p);q.expenses[i].title=x.target.value;change(q);}}/></Field><Field label="Kategorie"><select value={e.category??''} onChange={x=>{const q=clone(p);q.expenses[i].category=(x.target.value||null) as any;change(q);}}><option value="">Noch ungeklärt</option>{categories.map(c=><option key={c}>{c}</option>)}</select></Field><Field label="Datum"><input type="date" value={e.date??''} onChange={x=>{const q=clone(p);q.expenses[i].date=x.target.value||null;change(q);}}/></Field><Field label="Betrag in Cent" hint="Leer bleibt unbekannt; ganze Cent verwenden."><input inputMode="numeric" value={e.amount_cents??''} onChange={x=>{const q=clone(p);q.expenses[i].amount_cents=x.target.value===''?null:Number(x.target.value);change(q);}}/></Field></div></div>)}
- {p.work.map((w,i)=><div className="review-entry" key={w.ref}><strong>Arbeit {i+1}</strong><div className="form-grid"><Field label="Titel"><input value={w.title} onChange={x=>{const q=clone(p);q.work[i].title=x.target.value;change(q);}}/></Field><Field label="Datum der Arbeit"><input type="date" value={w.date??''} onChange={x=>{const q=clone(p);q.work[i].date=x.target.value||null;change(q);}}/></Field><Field label="Bereits bezahlte Ausgabe verknüpfen"><select multiple value={links[w.ref]??[]} onChange={x=>{setLinks({...links,[w.ref]:Array.from(x.target.selectedOptions,o=>o.value)});setOperation(crypto.randomUUID());}}>{s.Expenses.filter(e=>!e.voided).map(e=><option value={e.id} key={e.id}>{e.title} · {money(e.amount_cents,e.currency)}</option>)}</select></Field></div><WorkshopSelect settings={s.Settings[0]} value={capture.workshops_by_work_ref?.[w.ref]??''} disabled={!captureSupported} onChange={value=>{setCapture({...capture,workshops_by_work_ref:{...capture.workshops_by_work_ref,[w.ref]:value||null}});setOperation(crypto.randomUUID());}}/><small>{w.status==='planned'?'Geplant':'Bestätigt durchgeführt'} · {w.expense_refs.length} Rechnungen aus diesem Paket. Bestehende Rechnung auswählen, wenn nur der Einbau nachgetragen wird.</small></div>)}
- <details><summary>Alle importierten Angaben bearbeiten</summary><p className="muted">Erweiterte JSON-Ansicht für Positionen, Material und Regeln. Änderungen mit „Übernehmen“ prüfen.</p><textarea aria-label="Importpaket als JSON" placeholder="Vollständiges JSON-Paket nach Vertrag v1" rows={16} value={raw} onChange={e=>setRaw(e.target.value)} spellCheck={false}/><Btn onClick={()=>run(async()=>change(parseImport(raw)))}>Änderungen übernehmen</Btn></details>
- <h3>Originaldateien zuordnen</h3><p className="muted">PDF, JPEG, PNG oder WebP · maximal 4 MiB je Datei, höchstens 100 Dateien im Paket. Originale bleiben unverändert. Gleiche Inhalte werden wiederverwendet.</p><input aria-label="Originaldateien auswählen" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>{const list=Array.from(e.target.files??[]);run(async()=>{if(list.length>100)throw Error('Bitte höchstens 100 Dateien auswählen.');await selectFiles(list);});}}/>
- {p.documents.map(d=><div className="document-map" key={d.ref}><strong>{d.title}</strong><small>Beobachteter Name: {d.source_filename??'unbekannt'}{d.page_numbers?' · Seiten '+d.page_numbers.join(', '):''}</small><div className="form-grid"><Field label="Ausgewählte Originaldatei"><select value={mapping[d.ref]??''} onChange={e=>{setMapping({...mapping,[d.ref]:e.target.value===''?null:Number(e.target.value)});setExistingDocs({...existingDocs,[d.ref]:''});setOperation(crypto.randomUUID());}}><option value="">Nicht zugeordnet · Beleg fehlt</option>{files.map((f,i)=><option key={i} value={i}>{i+1}. {f.name} · {(f.size/1024).toFixed(0)} KB · {hashes[i]?.slice(0,8)}</option>)}</select></Field><Field label="Oder vorhandenes Original"><select value={existingDocs[d.ref]??''} onChange={e=>{setExistingDocs({...existingDocs,[d.ref]:e.target.value});setMapping({...mapping,[d.ref]:null});setOperation(crypto.randomUUID());}}><option value="">Keines</option>{s.Documents.filter(x=>!x.missing).map(x=><option key={x.id} value={x.id}>{x.title} · {x.source_filename}</option>)}</select></Field></div>{files.filter(f=>f.name===d.source_filename).length>1&&<p className="warning-text">Mehrere Dateien mit diesem Namen. Bitte anhand Inhalt und Prüfsumme bewusst zuordnen.</p>}</div>)}
- <label className="check"><input type="checkbox" checked={allowMissing} onChange={e=>setAllowMissing(e.target.checked)}/> Ich bestätige bewusst fehlende Originale. Diese bleiben als „Beleg fehlt“ gekennzeichnet.</label>
- {p.reminders.length>0&&<><h3>Neue Fälligkeiten</h3>{p.reminders.map(r=><p key={r.ref}>{r.title} · {date(r.due_date)} / {r.due_odometer_km??'offen'} km · E-Mail: {r.email_enabled===true?'angefordert':r.email_enabled===false?'aus':'offen, bleibt aus'}</p>)}<label className="check"><input type="checkbox" checked={confirmRules} onChange={e=>setConfirmRules(e.target.checked)}/> Diese neuen Wartungsregeln sind geprüft und bestätigt.</label></>}
- {conflicts.length>0&&<div className="banner warning">Mögliche bereits erfasste Rechnung: {conflicts.map(x=>x.title).join(', ')}. Vor erneutem Buchen prüfen.</div>}<Field label="Begründung für eine bewusst getrennte ähnliche Buchung (optional)"><input value={reason} onChange={e=>setReason(e.target.value)} placeholder="z. B. Zwei getrennte Rechnungen mit unterschiedlichen Rechnungsnummern"/></Field></fieldset>
- {frozen&&<div className="banner warning"><div>Der Speichervorgang ist festgelegt. Falls keine Bestätigung ankam, „Speichern wiederholen“ verwenden. Dateiuploads und Buchungen werden wiederverwendet.<Btn onClick={()=>run(async()=>{if(!adapter)throw Error('Bitte erneut verbinden.');const fresh=await adapter.call('read');if(fresh.state.Operations.some((o:any)=>o.id===operation&&o.status==='committed'))await onDone();else{setFrozen(false);setOperation(crypto.randomUUID());}})}>Vorgang prüfen und Bearbeitung freigeben</Btn></div></div>}
- <div className="button-group"><Btn primary disabled={busy} onClick={save}>{frozen?'Speichern wiederholen':'Geprüft speichern'}</Btn><Btn onClick={()=>download(JSON.stringify(p,null,2),'Fahrzeugakte-Entwurf.json','application/json')}><Download size={16}/> Entwurf sichern</Btn></div></section>;
-}
-function HistoryView({s,detailId,edit,run,openDocument}:{s:State;detailId?:string;edit:(t:Table,r:Meta,p:Record<string,unknown>)=>Promise<boolean>;run:Runner;openDocument:(d:Doc,preview?:boolean)=>Promise<void>}){
- const [search,setSearch]=useState(''),[category,setCategory]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[proof,setProof]=useState('all'),[showArchived,setShowArchived]=useState(false),[showVoided,setShowVoided]=useState(false);
- const row=s.Expenses.find(x=>x.id===detailId)??s.Work.find(x=>x.id===detailId),table=row&&'amount_cents' in row?'Expenses':'Work';
- if(detailId&&row)return <><a className="back-link" href="#/historie">← Zur Historie</a><section className="panel"><div className="section-heading"><h2>{row.title}</h2><span className="tag">{row.voided?'Storniert':row.archived?'Archiviert':'Gültig'}</span></div><p>{date(row.date)} · {row.odometer_km===null?'Kilometerstand unbekannt':row.odometer_km.toLocaleString('de-DE')+' km'}</p><RecordEditor key={row.id+'-'+row.revision} row={row} table={table} s={s} onSave={patch=>edit(table,row,patch)}/><h3>Zugehörige Belege</h3>{row.document_refs.map(id=>{const d=s.Documents.find(x=>x.id===id);return d&&<div className="list-row" key={id}><span><strong>{d.title}</strong><small>{d.source_filename??'Originalname unbekannt'}</small></span>{d.missing?<span className="tag due">Beleg fehlt</span>:<><Btn onClick={()=>run(()=>openDocument(d,true))}>Vorschau</Btn><Btn onClick={()=>run(()=>openDocument(d))}><Download size={15}/></Btn></>}</div>;})}{!row.document_refs.length&&<p className="muted">Kein Beleg verknüpft.</p>}<Field label="Vorhandene Dokumente verknüpfen"><select multiple value={row.document_refs} onChange={e=>edit(table,row,{document_refs:Array.from(e.target.selectedOptions,x=>x.value)})}>{s.Documents.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}</select></Field>
- <h3>Zusammengehörige Einträge</h3>{table==='Expenses'?s.Work.filter(w=>w.expense_refs.includes(row.id)).map(w=><a className="list-row" href={'#/historie/'+w.id} key={w.id}>{w.title}<ChevronRight size={16}/></a>):(row as Work).expense_refs.map(id=>{const e=s.Expenses.find(e=>e.id===id);return e&&<a className="list-row" href={'#/historie/'+e.id} key={e.id}>{e.title}<strong>{money(e.amount_cents,e.currency)}</strong></a>;})}
- <div className="button-group"><Btn onClick={()=>edit(table,row,{archived:!row.archived})}>{row.archived?'Archivierung aufheben':'Archivieren (zählt weiter)'}</Btn><Btn onClick={()=>edit(table,row,{voided:!row.voided})}>{row.voided?'Storno aufheben':'Stornieren (zählt nicht)'}</Btn></div><p className="muted">Archivieren blendet gültige Daten aus der Standardansicht aus. Stornieren nimmt eine Zahlung aus den Summen; die Änderung bleibt nachvollziehbar.</p><details><summary>Änderungsverlauf</summary>{s.AuditLog.filter(a=>a.entity_id===row.id||((a.after as any)?.ids??[]).includes(row.id)).map(a=><div key={a.id}><p>{new Date(a.created_at).toLocaleString('de-DE')} · {a.action==='edit'?'Bearbeitet':a.action==='import'?'Erfasst':a.action}</p><pre>{JSON.stringify({vorher:a.before,nachher:a.after},null,2)}</pre></div>)}</details></section></>;
- const rows=[...s.Expenses,...s.Work].filter(x=>(showArchived||!x.archived)&&(showVoided||!x.voided)&&(!from||!!x.date&&x.date>=from)&&(!to||!!x.date&&x.date<=to)&&(!category||('category' in x&&x.category===category))&&(!search||JSON.stringify(x).toLocaleLowerCase('de-DE').includes(search.toLocaleLowerCase('de-DE')))&&(proof==='all'||proof==='with'&&x.document_refs.some(id=>!s.Documents.find(d=>d.id===id)?.missing)||proof==='missing'&&(!x.document_refs.length||x.document_refs.some(id=>s.Documents.find(d=>d.id===id)?.missing)))).sort((a,b)=>(b.date??'').localeCompare(a.date??''));
- return <section className="panel"><div className="filters"><Field label="Stichwort"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Titel, Werkstatt, Rechnungsnummer …"/></Field><Field label="Kategorie"><select value={category} onChange={e=>setCategory(e.target.value)}><option value="">Alle Kategorien</option>{categories.map(c=><option key={c}>{c}</option>)}</select></Field><Field label="Von"><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></Field><Field label="Bis"><input type="date" value={to} onChange={e=>setTo(e.target.value)}/></Field><Field label="Beleg"><select value={proof} onChange={e=>setProof(e.target.value)}><option value="all">Alle</option><option value="with">Mit Original</option><option value="missing">Beleg fehlt</option></select></Field></div><div className="button-group"><label className="check"><input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/> Archivierte zeigen</label><label className="check"><input type="checkbox" checked={showVoided} onChange={e=>setShowVoided(e.target.checked)}/> Stornierte zeigen</label></div><div className="section-heading"><h2>Deine Einträge</h2><span className="muted">{rows.length} Einträge</span></div>{rows.length?rows.map(x=><a className="history-row" href={'#/historie/'+x.id} key={x.id}><span className="history-date">{date(x.date)}</span><span className="row-icon">{'amount_cents' in x?<FileText size={18}/>:<Wrench size={18}/>}</span><span className="history-description"><strong>{x.title}</strong><small>{'category' in x?x.category??'Kategorie offen':workKinds[x.kind]} · {x.odometer_km===null?'km offen':x.odometer_km.toLocaleString('de-DE')+' km'} · {x.document_refs.length} Beleg(e)</small>{'amount_cents' in x&&s.Work.filter(w=>w.expense_refs.includes(x.id)).map(w=><small key={w.id}>↳ {w.title}</small>)}{x.voided&&<span className="tag due">Storniert</span>}{x.archived&&<span className="tag">Archiviert</span>}</span><strong>{'amount_cents' in x?money(x.amount_cents,x.currency):x.status==='planned'?'Geplant':'Arbeit'}</strong><ChevronRight size={16}/></a>):<Empty title="Noch keine passenden Einträge">Erfasse deinen ersten Eintrag oder passe die Filter an.</Empty>}</section>;
-}
-function RecordEditor({row,table,s,onSave}:{row:Expense|Work;table:'Expenses'|'Work';s:State;onSave:(patch:Record<string,unknown>)=>Promise<boolean>}){const [draft,setDraft]=useState<any>(clone(row)),[saving,setSaving]=useState(false),[localError,setLocalError]=useState('');const set=(k:string,v:any)=>setDraft({...draft,[k]:v});const moneyInput=(k:string,label:string)=><Field label={label}><input inputMode="decimal" defaultValue={draft[k]==null?'':numText(draft[k]/100)} name={k}/></Field>;
- async function save(e:FormEvent<HTMLFormElement>){e.preventDefault();setSaving(true);setLocalError('');try{const f=new FormData(e.currentTarget),patch:any={};for(const [k,v] of Object.entries(draft))if(!['id','vehicle_id','revision','created_at','updated_at','ref','archived','voided'].includes(k))patch[k]=v;for(const k of table==='Expenses'?['amount_cents']:['estimated_cost_cents'])patch[k]=cents(String(f.get(k)??''));if(table==='Expenses')patch.refund_of_id=draft.refund_of_id??null;await onSave(patch);}catch(e){setLocalError((e as Error).message);}finally{setSaving(false);}}
- return <form onSubmit={save}><div className="form-grid"><Field label="Titel"><input required value={draft.title} onChange={e=>set('title',e.target.value)}/></Field><Field label="Datum (leer = unbekannt)"><input type="date" value={draft.date??''} onChange={e=>set('date',e.target.value||null)}/></Field><Field label="Kilometerstand (leer = unbekannt)"><input type="number" min="0" step="any" value={draft.odometer_km??''} onChange={e=>set('odometer_km',e.target.value===''?null:Number(e.target.value))}/></Field>{table==='Expenses'?<><Field label="Kategorie"><select value={draft.category??''} onChange={e=>set('category',e.target.value||null)}><option value="">Ungeklärt</option>{categories.map(c=><option key={c}>{c}</option>)}</select></Field>{moneyInput('amount_cents','Betrag')}<Field label="Währung"><input value={draft.currency??''} pattern="[A-Z]{3}" onChange={e=>set('currency',e.target.value||null)}/></Field><Field label="Händler / Werkstatt"><input value={draft.vendor??''} onChange={e=>set('vendor',e.target.value||null)}/></Field><Field label="Rechnungsnummer"><input value={draft.invoice_number??''} onChange={e=>set('invoice_number',e.target.value||null)}/></Field><Field label="Zahlungsart"><select value={draft.cashflow_type??'expense'} onChange={e=>set('cashflow_type',e.target.value)}><option value="expense">Ausgabe / Erstattung</option><option value="income">Einnahme / Verkauf</option></select></Field><Field label="Erstattung bezieht sich auf"><select value={draft.refund_of_id??''} onChange={e=>set('refund_of_id',e.target.value||null)}><option value="">Kein Bezug</option>{s.Expenses.filter(e=>e.id!==row.id).map(e=><option key={e.id} value={e.id}>{e.title}</option>)}</select></Field><Field label="Notizen"><textarea value={draft.notes??''} onChange={e=>set('notes',e.target.value||null)}/></Field></>:<><Field label="Arbeitsart"><select value={draft.kind} onChange={e=>set('kind',e.target.value)}>{Object.entries(workKinds).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></Field><Field label="Status"><select value={draft.status} onChange={e=>set('status',e.target.value)}><option value="completed">Bestätigt durchgeführt</option><option value="planned">Geplant</option></select></Field><Field label="Durchführung"><select value={draft.performed_by} onChange={e=>{const performed_by=e.target.value;setDraft({...draft,performed_by,workshop_snapshot:performed_by==='self'?workshopSnapshot(s.Settings[0],s.Settings[0].self_workshop_id??null):null});}}><option value="unknown">Unbekannt</option><option value="self">Eigenleistung</option><option value="workshop">Werkstatt</option></select></Field>{moneyInput('estimated_cost_cents','Kostenschätzung (nur Planung)')}<Field label="Eigene Arbeitszeit in Minuten (optional)"><input type="number" min="0" value={draft.labor_minutes??''} onChange={e=>set('labor_minutes',e.target.value===''?null:Number(e.target.value))}/></Field><Field label="Beschreibung"><textarea value={draft.description??''} onChange={e=>set('description',e.target.value||null)}/></Field><Field label="Bezahlte Ausgaben verknüpfen"><select multiple value={draft.expense_refs} onChange={e=>{const ids=Array.from(e.target.selectedOptions,x=>x.value);setDraft({...draft,expense_refs:ids,allocations:draft.allocations.filter((a:any)=>ids.includes(a.expense_id))});}}>{s.Expenses.map(e=><option key={e.id} value={e.id}>{e.title} · {money(e.amount_cents,e.currency)}</option>)}</select></Field></>}</div>
- {table==='Expenses'&&draft.category==='Tanken'&&<fieldset><legend>Tankdaten</legend><div className="form-grid">{[['liters','Liter'],['fuel_type','Kraftstoff'],['station_name','Tankstelle']].map(([k,l])=><Field key={k} label={l}><input type={k==='liters'?'number':'text'} step="any" value={draft.fuel?.[k]??''} onChange={e=>set('fuel',{liters:null,fuel_type:null,station_name:null,full_tank:null,missed_previous_fillup:null,...draft.fuel,[k]:e.target.value===''?null:k==='liters'?Number(e.target.value):e.target.value})}/></Field>)}{[['full_tank','Vollgetankt'],['missed_previous_fillup','Vorherigen Tankvorgang ausgelassen']].map(([k,l])=><Field key={k} label={l}><select value={draft.fuel?.[k]===null||draft.fuel?.[k]===undefined?'':String(draft.fuel[k])} onChange={e=>set('fuel',{liters:null,fuel_type:null,station_name:null,full_tank:null,missed_previous_fillup:null,...draft.fuel,[k]:e.target.value===''?null:e.target.value==='true'})}><option value="">Unbekannt</option><option value="true">Ja</option><option value="false">Nein</option></select></Field>)}</div>{draft.fuel?.liters&&draft.amount_cents!==null&&<p>Preis pro Liter: {money(Math.round(draft.amount_cents/draft.fuel.liters),draft.currency)}</p>}</fieldset>}
- <details><summary>Teile, Betriebsstoffe und Positionspreise</summary>{table==='Expenses'?<PositionEditor parts={draft.items??[]} prices={draft.position_prices??[]} onChange={(items,position_prices)=>setDraft({...draft,items,position_prices})}/>:<PartsEditor parts={draft.parts??[]} onChange={p=>set('parts',p)}/>}</details>{table==='Work'&&<><WorkshopInfo snapshot={draft.workshop_snapshot}/><WorkshopSelect settings={s.Settings[0]} value={(s.Settings[0].workshops??[]).some(w=>w.id===draft.workshop_snapshot?.profile_id&&!w.archived)?draft.workshop_snapshot.profile_id:''} onChange={id=>set('workshop_snapshot',workshopSnapshot(s.Settings[0],id||null))}/></>}
- {table==='Work'&&<><details><summary>Optionale Kostenanteile</summary><p className="muted">Diese Zuordnung erzeugt keine weitere Zahlung. Summe aller Arbeitsanteile darf den Rechnungsbetrag nicht überschreiten.</p>{draft.expense_refs.map((id:string)=><Field key={id} label={s.Expenses.find(e=>e.id===id)?.title??id}><input type="number" min="0" placeholder="Anteil in Cent (optional)" value={draft.allocations.find((a:any)=>a.expense_id===id)?.amount_cents??''} onChange={e=>set('allocations',[...draft.allocations.filter((a:any)=>a.expense_id!==id),...(e.target.value===''?[]:[{expense_id:id,amount_cents:Number(e.target.value)}])])}/></Field>)}</details>
- {draft.kind==='modification'&&<fieldset><legend>Umbauangaben</legend><div className="form-grid">{[['manufacturer','Hersteller'],['part_number','Teilenummer'],['approval_number','Genehmigungsnummer'],['installation_date','Einbaudatum'],['installation_odometer_km','Einbaukilometer'],['removal_date','Ausbaudatum'],['removal_odometer_km','Ausbaukilometer']].map(([k,l])=><Field key={k} label={l}><input type={k.endsWith('date')?'date':k.endsWith('_km')?'number':'text'} value={draft.modification_details?.[k]??''} onChange={e=>set('modification_details',{manufacturer:null,part_number:null,approval_number:null,status:'planned',...draft.modification_details,[k]:e.target.value===''?null:k.endsWith('_km')?Number(e.target.value):e.target.value})}/></Field>)}<Field label="Bestätigter Zustand"><select value={draft.modification_details?.status??'planned'} onChange={e=>set('modification_details',{manufacturer:null,part_number:null,approval_number:null,...draft.modification_details,status:e.target.value})}><option value="planned">Geplant</option><option value="installed">Eingebaut</option><option value="removed">Ausgebaut</option></select></Field></div><p className="muted">Dokumentiert den bestätigten Sachstand. Eine Genehmigungsnummer ist keine automatische Aussage zur Zulässigkeit.</p></fieldset>}</>}
- {localError&&<p className="warning-text" role="alert">{localError}</p>}<Btn type="submit" primary disabled={saving}>Änderungen speichern</Btn></form>;
-}
-function PartsEditor({parts,onChange}:{parts:any[];onChange:(parts:any[])=>void}){return <>{parts.map((p,i)=><div className="review-entry" key={i}><div className="form-grid">{[['description','Beschreibung'],['part_number','Teilenummer'],['quantity','Menge'],['unit','Einheit'],['specification','Bestätigte Freigabe / Spezifikation']].map(([k,l])=><Field key={k} label={l}><input type={k==='quantity'?'number':'text'} step="any" value={p[k]??''} onChange={e=>onChange(parts.map((x,j)=>j===i?{...x,[k]:e.target.value===''?null:k==='quantity'?Number(e.target.value):e.target.value}:x))}/></Field>)}</div><Btn onClick={()=>onChange(parts.filter((_,j)=>j!==i))}>Position entfernen</Btn></div>)}<Btn onClick={()=>onChange([...parts,{description:null,part_number:null,quantity:null,unit:null,specification:null}])}><Plus size={16}/> Position hinzufügen</Btn></>;}
-function VehicleForm({s,edit,run,mutate,openDocument,onPreview}:{s:State;edit:(t:Table,r:Meta,p:Record<string,unknown>)=>Promise<boolean>;run:Runner;mutate:(a:string,p:any)=>Promise<void>;openDocument:(d:Doc,preview?:boolean)=>Promise<void>;onPreview:(p:ImportPackage)=>void}){const v=s.Vehicles[0],photo=s.Documents.find(d=>d.id===v.photo_id);return <><section className="panel"><h2>Fahrzeugdaten</h2><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),patch:any={};for(const k of ['manufacturer','model','year','first_registration','engine','vin','plate','purchase_date','fuel_type'])patch[k]=String(f.get(k))||null;patch.purchase_odometer=number(String(f.get('purchase_odometer')));edit('Vehicles',v,patch);}}><div className="form-grid">{[['manufacturer','Hersteller'],['model','Modell'],['year','Baujahr'],['first_registration','Erstzulassung'],['engine','Motor / Motorkennbuchstabe'],['vin','FIN'],['plate','Kennzeichen'],['purchase_date','Kaufdatum'],['purchase_odometer','Kilometer bei Kauf'],['fuel_type','Kraftstoff']].map(([k,l])=><Field key={k} label={l}><input name={k} type={['first_registration','purchase_date'].includes(k)?'date':k==='purchase_odometer'?'number':'text'} required={['manufacturer','model'].includes(k)} defaultValue={(v as any)[k]??''}/></Field>)}</div><Btn type="submit" primary>Fahrzeugdaten speichern</Btn></form><h3>Fahrzeugbilder</h3><a className="button" href="#/fahrzeug/galerie">Galerie öffnen <ArrowUpRight size={15}/></a></section>
- <section className="panel"><h2>Kilometerhistorie</h2><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(()=>mutate('odometer',{id:crypto.randomUUID(),date:String(f.get('date')),km:number(String(f.get('km'))),note:String(f.get('note'))||null}),'Kilometerstand bestätigt gespeichert.');}}><div className="form-grid"><Field label="Datum des bestätigten Stands"><input name="date" required type="date"/></Field><Field label="Bestätigte Kilometer"><input name="km" required type="number" min="0" step="any"/></Field><Field label="Notiz"><input name="note"/></Field></div><Btn type="submit">Kilometerstand ergänzen</Btn></form>{s.Odometer.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(x=><div className="list-row" key={x.id}>{date(x.date)}<strong>{x.km.toLocaleString('de-DE')} km</strong><span>{x.note}</span></div>)}<p className="muted">Kilometerangaben aus datierten Einträgen ergänzen die Historie. Historische Werte überschreiben keinen neueren Stand.</p>{odometerWarnings(s).length>0&&<p className="warning-text">Mindestens ein späterer Stand liegt unter einem früheren Wert. Bitte die zugehörigen Einträge prüfen.</p>}</section></>;}
-function Documents({s,edit,run,openDocument,onPreview,adapter,refresh}:{s:State;adapter:Adapter|null;refresh:()=>Promise<void>;edit:(t:Table,r:Meta,p:Record<string,unknown>)=>Promise<boolean>;run:Runner;openDocument:(d:Doc,preview?:boolean)=>Promise<void>;onPreview:(p:ImportPackage)=>void}){const [q,setQ]=useState(''),[type,setType]=useState('');return <section className="panel"><div className="section-heading"><h2>Deine Dokumente</h2><Btn primary onClick={()=>{const p=blankPackage();p.documents.push({ref:'doc1',source_filename:null,title:'Neues Dokument',document_type:'other'});onPreview(p);}}><Plus size={16}/> Dokument ablegen</Btn></div><div className="form-grid"><Field label="Suchen"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name, Titel oder Typ …"/></Field><Field label="Typ"><select value={type} onChange={e=>setType(e.target.value)}><option value="">Alle Dokumente</option>{Object.entries(docTypes).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></Field></div>{s.Documents.filter(d=>(!type||d.document_type===type)&&JSON.stringify(d).toLocaleLowerCase().includes(q.toLocaleLowerCase())).map(d=><article className="document-card" key={d.id}><div className="list-row"><span className="row-icon"><FileText size={20}/></span><span><strong>{d.title}</strong><small className="filename">{d.source_filename??'Originalname unbekannt'}</small><small>{docTypes[d.document_type]} · {d.size?(d.size/1024).toFixed(0)+' KB':'Größe unbekannt'} · {d.missing?'Beleg fehlt':'Original gespeichert'}</small></span>{!d.missing&&<div className="button-group"><Btn onClick={()=>run(()=>openDocument(d,true))}>Vorschau</Btn><Btn onClick={()=>run(()=>openDocument(d))}><Download size={16}/> Download</Btn></div>}</div><details><summary>Angaben und Verknüpfungen</summary>{d.missing&&<Field label="Fehlendes Original ergänzen (maximal 4 MiB)"><input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>{const f=e.target.files?.[0];if(f)run(async()=>{if(!adapter)throw Error('Bitte verbinden.');const file=await prepareFile(f);const u=await adapter.call('upload',{operation_id:crypto.randomUUID(),file});await adapter.call('attachDocument',{id:d.id,revision:d.revision,upload_id:u.id});await refresh();},'Original bestätigt verknüpft.');}}/></Field>}<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);edit('Documents',d,{title:String(f.get('title')),document_type:String(f.get('type'))});}}><Field label="Anzeigename"><input name="title" defaultValue={d.title} required/></Field><Field label="Typ"><select name="type" defaultValue={d.document_type}>{Object.entries(docTypes).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></Field><Btn type="submit">Angaben speichern</Btn></form><p className="muted">Originaldateiname bleibt erhalten. Prüfsumme: {d.sha256??'Noch kein Original zugeordnet'}</p>{s.DocumentLinks.filter(l=>l.document_id===d.id).map(l=><a className="list-row" href={'#/historie/'+l.entity_id} key={l.id}>{[...s.Expenses,...s.Work].find(x=>x.id===l.entity_id)?.title??'Eintrag'}<LinkIcon size={16}/></a>)}</details></article>)}{!s.Documents.length&&<Empty title="Ein Platz für alle Originale">Rechnungen, ABE, Verträge und Serviceheft-Scans. Auch ohne Ausgabe ablegbar.</Empty>}</section>;}
-function Reminders({s,edit,run,mutate,onPreview}:{s:State;edit:(t:Table,r:Meta,p:Record<string,unknown>)=>Promise<boolean>;run:Runner;mutate:(a:string,p:any)=>Promise<void>;onPreview:(p:ImportPackage)=>void}){const odo=currentOdometer(s);return <><section className="panel"><h2>Termin oder Wartungsregel ergänzen</h2><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{const p=blankPackage();const r:ReminderInput={ref:'reminder1',title:String(f.get('title')),work_type:String(f.get('kind')) as any,due_date:String(f.get('date'))||null,due_odometer_km:number(String(f.get('km'))),repeat_months:number(String(f.get('months'))),repeat_km:number(String(f.get('repeat_km'))),lead_days:number(String(f.get('lead_days'))),lead_km:number(String(f.get('lead_km'))),email_enabled:f.get('email')===null?false:true,basis_work_ref:null,notes:String(f.get('notes'))||null};if(!r.due_date&&r.due_odometer_km===null)throw Error('Bitte mindestens Datum oder Kilometergrenze nennen.');p.reminders.push(r);onPreview(p);});}}><div className="form-grid"><Field label="Arbeit / Termin"><input name="title" required/></Field><Field label="Arbeitsart"><select name="kind">{Object.entries(workKinds).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></Field><Field label="Fällig am (optional)"><input name="date" type="date"/></Field><Field label="Oder bei Kilometerstand (optional)"><input name="km" inputMode="numeric"/></Field></div><details><summary>Wiederholung, Vorlauf und E-Mail</summary><div className="form-grid"><Field label="Wiederholen alle Monate"><input name="months" inputMode="numeric"/></Field><Field label="Wiederholen alle Kilometer"><input name="repeat_km" inputMode="numeric"/></Field><Field label="Vorlauf in Tagen"><input name="lead_days" defaultValue="30" inputMode="numeric"/></Field><Field label="Vorlauf in Kilometern"><input name="lead_km" defaultValue="1000" inputMode="numeric"/></Field><Field label="Bestätigte Materialhinweise"><textarea name="notes"/></Field></div><label className="check"><input type="checkbox" name="email"/> E-Mail für diese Regel aktivieren (zusätzlich globale Einstellung erforderlich)</label></details><p className="muted">Fällig, sobald die erste bestätigte Grenze erreicht ist. Ein Teilekauf setzt kein Intervall zurück.</p><Btn type="submit" primary>Regel prüfen</Btn></form></section>
- {s.Reminders.map(r=><section className="panel" key={r.id} id={r.id}><div className="section-heading"><h2>{r.title}</h2><span className={'tag '+dueStatus(r,today(),odo?.km??null)}>{dueLabels[dueStatus(r,today(),odo?.km??null)]}</span></div><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{const patch:any={due_date:String(f.get('date'))||null,email_enabled:!!f.get('email'),fixed_calendar:!!f.get('fixed'),notes:String(f.get('notes'))||null};for(const k of ['due_odometer_km','repeat_months','repeat_days','repeat_km','lead_days','lead_km'])patch[k]=number(String(f.get(k)));await edit('Reminders',r,patch);});}}><div className="form-grid"><Field label="Fällig am"><input name="date" type="date" defaultValue={r.due_date??''}/></Field>{[['due_odometer_km','Fällig bei Kilometer'],['repeat_months','Wiederholung Monate'],['repeat_days','Oder Wiederholung Tage'],['repeat_km','Wiederholung Kilometer'],['lead_days','Vorlauf Tage'],['lead_km','Vorlauf Kilometer']].map(([k,l])=><Field key={k} label={l}><input name={k} defaultValue={(r as any)[k]??''} inputMode="numeric"/></Field>)}<Field label="Notizen / Material"><textarea name="notes" defaultValue={r.notes??''}/></Field></div><label className="check"><input type="checkbox" name="email" defaultChecked={r.email_enabled===true}/> E-Mail für diese Regel</label><label className="check"><input type="checkbox" name="fixed" defaultChecked={r.fixed_calendar}/> Feste Kalenderregel statt tatsächlichem Erledigungsdatum</label><Btn type="submit">Regel speichern</Btn></form><h3>Erledigung bestätigen</h3><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(()=>mutate('completeReminder',{id:r.id,revision:r.revision,work_id:String(f.get('work'))}),'Intervall anhand der bestätigten Arbeit aktualisiert.');}}><Field label="Passende abgeschlossene Arbeit"><select name="work" required><option value="">Bitte auswählen</option>{s.Work.filter(w=>w.status==='completed'&&w.kind===r.work_type&&!w.voided).map(w=><option key={w.id} value={w.id}>{w.title} · {date(w.date)} · {w.odometer_km??'offen'} km</option>)}</select></Field><Btn type="submit">Anhand dieser Arbeit erledigen</Btn></form><details><summary>Für ChatGPT kopieren</summary><pre className="prompt-text">{researchPrompt(r,s.Vehicles[0],s.Work.find(w=>w.id===r.basis_work_ref||w.id===r.completed_work_id),s.Settings[0].prompt_templates[templateKey(r.title)])}</pre><Btn onClick={()=>run(()=>navigator.clipboard.writeText(researchPrompt(r,s.Vehicles[0],s.Work.find(w=>w.id===r.basis_work_ref||w.id===r.completed_work_id),s.Settings[0].prompt_templates[templateKey(r.title)])),'Recherchetext kopiert.')}>Recherchetext kopieren</Btn></details><Btn onClick={()=>edit('Reminders',r,{voided:!r.voided})}>{r.voided?'Regel wieder aktivieren':'Regel pausieren'}</Btn></section>)}
- </>;}

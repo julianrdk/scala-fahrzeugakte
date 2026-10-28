@@ -1,14 +1,116 @@
-import {describe,expect,it} from 'vitest';
-import {parseReceipt,receiptMoney,type ReceiptPage} from '../shared/receipt';
-const page=(text:string):ReceiptPage=>({page:1,text,method:'text'});
-export const invoiceText='Muster Autoteile GmbH\nRechnungsnummer: RE-2026-42\nRechnungsdatum: 26.10.2026\nLieferdatum: 24.10.2026\nPos  Beschreibung  Menge  Einheit  Teilenummer  Einzelpreis netto  Gesamt netto\n1  Ölfilter  2  Stück  OF-42  12,50  25,00\n2  Motoröl  4,5  l  OL-5  8,00  36,00\nNettosumme: 61,00 EUR\nUmsatzsteuer: 11,59 EUR\nRechnungsbetrag: 72,59 EUR';
-describe('Kostenlose Belegerkennung: strukturierte Vorschläge',()=>{
- it('trennt Rechnungsbetrag, Positionen, Rechnungs- und Lieferdatum',()=>{const r=parseReceipt([page(invoiceText)]);expect(r.date).toBe('2026-10-26');expect(r.invoice_number).toBe('RE-2026-42');expect(r.vendor).toBe('Muster Autoteile GmbH');expect(r.currency).toBe('EUR');expect(r.amount_cents).toBe(7259);expect(r.items).toHaveLength(2);expect(r.items[0]).toMatchObject({description:'Ölfilter',quantity:2,unit:'Stück',part_number:'OF-42'});expect(r.prices[0]).toEqual({unit_price:'12.50',total_cents:2500,basis:'net'});expect(r.items[1].quantity).toBe(4.5);expect(r.sources.amount_cents).toContain('Seite 1');});
- it('lässt widersprüchliche Gesamtbeträge und Datumsangaben ungefüllt',()=>{const r=parseReceipt([page(invoiceText+'\nGesamtbetrag: 99,99 EUR\nRechnungsdatum: 27.10.2026')]);expect(r.amount_cents).toBeNull();expect(r.date).toBeNull();expect(r.warnings.join(' ')).toMatch(/Mehrere/);});
- it.each(['31.02.2026','99.99.2026','2026-13-40'])('erfindet kein Datum aus %s',date=>expect(parseReceipt([page('Rechnungsdatum: '+date)]).date).toBeNull());
- it('wertet Netto, Steuer, IBAN und Kundennummer nicht als bezahlten Gesamtbetrag',()=>{const r=parseReceipt([page('Kundennummer: 1234\nNettosumme: 100,00 EUR\nMwSt: 19,00 EUR\nIBAN DE00 1234 5678')]);expect(r.amount_cents).toBeNull();expect(r.invoice_number).toBeNull();expect(r.items).toEqual([]);});
- it('behält unbekannte Mengen, Teilenummern und Einzelpreise offen',()=>{const r=parseReceipt([page('Beschreibung Menge Gesamt\nÖlfilter  12,90\nRechnungsbetrag: 12,90 EUR')]);expect(r.items[0]).toMatchObject({description:'Ölfilter',quantity:null,part_number:null});expect(r.prices[0]).toEqual({unit_price:null,total_cents:1290,basis:'unknown'});});
- it('liest mehrere Seiten und markiert OCR als überprüfungsbedürftig',()=>{const r=parseReceipt([{page:1,text:'Muster Werkstatt GmbH\nRechnungsdatum: 26.10.2026',method:'text'},{page:2,text:'Rechnungsbetrag: 123,45 EUR',method:'ocr'}]);expect(r.amount_cents).toBe(12345);expect(r.sources.amount_cents).toContain('Seite 2');expect(r.warnings.join(' ')).toContain('OCR');});
- it('trennt OCR-Teilenummern sicher von Preisen und erkennt zusammengezogene Spaltenüberschriften',()=>{const text='Pos Beschreibung                               Menge Einheit      Teilenummer    Einzelpreis netto Gesamt netto\n1     Ölfilter                                   2       Stück     OF-42        12,50         25,00\n2     Motoröl                                  4,5     |          OL-5         8,00          36,00\nRechnungsbetrag: 72,59 EUR',r=parseReceipt([{page:1,text,method:'ocr'}]);expect(r.items).toHaveLength(2);expect(r.items[0]).toMatchObject({description:'Ölfilter',quantity:2,part_number:'OF-42'});expect(r.items[1]).toMatchObject({description:'Motoröl',quantity:4.5,part_number:'OL-5',unit:null});expect(r.prices.map(x=>x.unit_price)).toEqual(['12.50','8.00']);});
- it.each([['1.234,56',123456],['1234.56',123456],['0,00',0],['-10,00',-1000],['1,234',null],['1e3',null]])('liest Geldbeträge ohne Gleitkomma-Zusatzbeträge: %s', (text,result)=>expect(receiptMoney(text as string)).toBe(result));
+import { describe, expect, it } from "vitest";
+import {
+  parseReceipt,
+  receiptMoney,
+  type ReceiptPage,
+} from "../shared/receipt";
+const page = (text: string): ReceiptPage => ({ page: 1, text, method: "text" });
+export const invoiceText =
+  "Muster Autoteile GmbH\nRechnungsnummer: RE-2026-42\nRechnungsdatum: 26.10.2026\nLieferdatum: 24.10.2026\nPos  Beschreibung  Menge  Einheit  Teilenummer  Einzelpreis netto  Gesamt netto\n1  Ölfilter  2  Stück  OF-42  12,50  25,00\n2  Motoröl  4,5  l  OL-5  8,00  36,00\nNettosumme: 61,00 EUR\nUmsatzsteuer: 11,59 EUR\nRechnungsbetrag: 72,59 EUR";
+describe("Kostenlose Belegerkennung: strukturierte Vorschläge", () => {
+  it("trennt Rechnungsbetrag, Positionen, Rechnungs- und Lieferdatum", () => {
+    const r = parseReceipt([page(invoiceText)]);
+    expect(r.date).toBe("2026-10-26");
+    expect(r.invoice_number).toBe("RE-2026-42");
+    expect(r.vendor).toBe("Muster Autoteile GmbH");
+    expect(r.currency).toBe("EUR");
+    expect(r.amount_cents).toBe(7259);
+    expect(r.items).toHaveLength(2);
+    expect(r.items[0]).toMatchObject({
+      description: "Ölfilter",
+      quantity: 2,
+      unit: "Stück",
+      part_number: "OF-42",
+    });
+    expect(r.prices[0]).toEqual({
+      unit_price: "12.50",
+      total_cents: 2500,
+      basis: "net",
+    });
+    expect(r.items[1].quantity).toBe(4.5);
+    expect(r.sources.amount_cents).toContain("Seite 1");
+  });
+  it("lässt widersprüchliche Gesamtbeträge und Datumsangaben ungefüllt", () => {
+    const r = parseReceipt([
+      page(
+        invoiceText + "\nGesamtbetrag: 99,99 EUR\nRechnungsdatum: 27.10.2026",
+      ),
+    ]);
+    expect(r.amount_cents).toBeNull();
+    expect(r.date).toBeNull();
+    expect(r.warnings.join(" ")).toMatch(/Mehrere/);
+  });
+  it.each(["31.02.2026", "99.99.2026", "2026-13-40"])(
+    "erfindet kein Datum aus %s",
+    (date) =>
+      expect(parseReceipt([page("Rechnungsdatum: " + date)]).date).toBeNull(),
+  );
+  it("wertet Netto, Steuer, IBAN und Kundennummer nicht als bezahlten Gesamtbetrag", () => {
+    const r = parseReceipt([
+      page(
+        "Kundennummer: 1234\nNettosumme: 100,00 EUR\nMwSt: 19,00 EUR\nIBAN DE00 1234 5678",
+      ),
+    ]);
+    expect(r.amount_cents).toBeNull();
+    expect(r.invoice_number).toBeNull();
+    expect(r.items).toEqual([]);
+  });
+  it("behält unbekannte Mengen, Teilenummern und Einzelpreise offen", () => {
+    const r = parseReceipt([
+      page(
+        "Beschreibung Menge Gesamt\nÖlfilter  12,90\nRechnungsbetrag: 12,90 EUR",
+      ),
+    ]);
+    expect(r.items[0]).toMatchObject({
+      description: "Ölfilter",
+      quantity: null,
+      part_number: null,
+    });
+    expect(r.prices[0]).toEqual({
+      unit_price: null,
+      total_cents: 1290,
+      basis: "unknown",
+    });
+  });
+  it("liest mehrere Seiten und markiert OCR als überprüfungsbedürftig", () => {
+    const r = parseReceipt([
+      {
+        page: 1,
+        text: "Muster Werkstatt GmbH\nRechnungsdatum: 26.10.2026",
+        method: "text",
+      },
+      { page: 2, text: "Rechnungsbetrag: 123,45 EUR", method: "ocr" },
+    ]);
+    expect(r.amount_cents).toBe(12345);
+    expect(r.sources.amount_cents).toContain("Seite 2");
+    expect(r.warnings.join(" ")).toContain("OCR");
+  });
+  it("trennt OCR-Teilenummern sicher von Preisen und erkennt zusammengezogene Spaltenüberschriften", () => {
+    const text =
+        "Pos Beschreibung                               Menge Einheit      Teilenummer    Einzelpreis netto Gesamt netto\n1     Ölfilter                                   2       Stück     OF-42        12,50         25,00\n2     Motoröl                                  4,5     |          OL-5         8,00          36,00\nRechnungsbetrag: 72,59 EUR",
+      r = parseReceipt([{ page: 1, text, method: "ocr" }]);
+    expect(r.items).toHaveLength(2);
+    expect(r.items[0]).toMatchObject({
+      description: "Ölfilter",
+      quantity: 2,
+      part_number: "OF-42",
+    });
+    expect(r.items[1]).toMatchObject({
+      description: "Motoröl",
+      quantity: 4.5,
+      part_number: "OL-5",
+      unit: null,
+    });
+    expect(r.prices.map((x) => x.unit_price)).toEqual(["12.50", "8.00"]);
+  });
+  it.each([
+    ["1.234,56", 123456],
+    ["1234.56", 123456],
+    ["0,00", 0],
+    ["-10,00", -1000],
+    ["1,234", null],
+    ["1e3", null],
+  ])("liest Geldbeträge ohne Gleitkomma-Zusatzbeträge: %s", (text, result) =>
+    expect(receiptMoney(text as string)).toBe(result),
+  );
 });

@@ -1,5 +1,187 @@
-import type {State} from '../shared/types';
-import {totals} from '../shared/logic';
-const date=(d:string|null)=>d?d.split('-').reverse().join('.'):'unbekannt';
-const money=(n:number|null,c:string|null='EUR')=>n===null?'unbekannt':c===null?(n/100).toLocaleString('de-DE')+' (Währung offen)':new Intl.NumberFormat('de-DE',{style:'currency',currency:c}).format(n/100);
-export function PrintView({s,mode,year,includeCost}:{s:State;mode:'service'|'costs'|'sale';year:string;includeCost:boolean}){const v=s.Vehicles[0],sum=totals(s,year);return <article className="print-view"><h1>{mode==='costs'?'Kostenübersicht':mode==='sale'?'Fahrzeughistorie für Verkauf':'Privates Serviceheft'}</h1><div className="print-meta"><h2>{v.manufacturer} {v.model}</h2><p>Stand: {new Date().toLocaleDateString('de-DE',{timeZone:'Europe/Berlin'})} · {mode==='costs'?'Kalenderjahr '+year:'Alle dokumentierten Arbeiten'}</p><p>Motor: {v.engine??'unbekannt'} · Baujahr: {v.year??'unbekannt'} · Erstzulassung: {date(v.first_registration)}</p>{mode!=='sale'&&<p>FIN: {v.vin??'unbekannt'} · Kennzeichen: {v.plate??'unbekannt'}</p>}</div>{mode==='costs'?<><p>Ist-Ausgaben inklusive Kauf: {money(sum.expenses)} · Betriebskosten: {money(sum.operating)} · Einnahmen getrennt: {money(sum.income)}</p><p>Offen: {sum.unknown} Beträge, {sum.foreign} Fremdwährungen/unklare Währungen, {sum.undated} Einträge ohne Datum.</p><table><thead><tr><th>Datum</th><th>Eintrag / Kategorie</th><th>Rechnung</th><th>Betrag</th></tr></thead><tbody>{s.Expenses.filter(e=>!e.voided&&e.date?.startsWith(year)).map(e=><tr key={e.id}><td>{date(e.date)}</td><td>{e.title}<br/>{e.category}</td><td>{e.invoice_number??'unbekannt'}</td><td>{money(e.amount_cents,e.currency)}{e.cashflow_type==='income'?' (Einnahme)':''}</td></tr>)}</tbody></table></>:<table><thead><tr><th style={{width:'16%'}}>Datum / km</th><th>Arbeit / Durchführung</th><th style={{width:'25%'}}>Belegnummern{includeCost?' / Kostenanteile':''}</th></tr></thead><tbody>{s.Work.filter(w=>w.status==='completed'&&!w.voided).sort((a,b)=>(a.date??'').localeCompare(b.date??'')).map(w=><tr key={w.id}><td>{date(w.date)}<br/>{w.odometer_km===null?'km unbekannt':w.odometer_km.toLocaleString('de-DE')+' km'}</td><td><strong>{w.title}</strong><br/>{w.performed_by==='self'?'Eigenleistung':w.performed_by==='workshop'?'Werkstatt':'Durchführung unbekannt'}<br/>{w.workshop_snapshot&&<>{w.workshop_snapshot.name}{w.workshop_snapshot.address&&<> · {w.workshop_snapshot.address}</>}<br/></>}{w.description??''}{w.parts?.map((p,i)=><p key={i}>{p.description} · {p.part_number??'Teilenummer offen'} · {p.specification??'Freigabe offen'}</p>)}</td><td>{w.expense_refs.map(id=>{const e=s.Expenses.find(e=>e.id===id);const share=w.allocations.find(a=>a.expense_id===id);return e&&!e.voided?<p key={id}>{e.invoice_number??'Nummer unbekannt'}{includeCost?<><br/>{share?money(share.amount_cents,e.currency)+' Anteil':money(e.amount_cents,e.currency)+' Rechnung gesamt (kann mehrere Arbeiten betreffen)'}</>:null}</p>:null;})}{!w.expense_refs.length?'Keine neue Zahlung verknüpft':''}</td></tr>)}</tbody></table>}<p className="print-note">Privat geführte Fahrzeugakte. Keine offizielle Herstellerdokumentation. Unbekannte Angaben sind ausdrücklich offen. Anlagen und unveränderte Originale sind separat exportierbar.</p></article>;}
+import { totals } from "../shared/logic";
+import type { State } from "../shared/types";
+const date = (d: string | null) =>
+  d ? d.split("-").reverse().join(".") : "unbekannt";
+const money = (n: number | null, c: string | null = "EUR") =>
+  n === null
+    ? "unbekannt"
+    : c === null
+      ? (n / 100).toLocaleString("de-DE") + " (Währung offen)"
+      : new Intl.NumberFormat("de-DE", {
+          style: "currency",
+          currency: c,
+        }).format(n / 100);
+export function PrintView({
+  s,
+  mode,
+  year,
+  includeCost,
+}: {
+  s: State;
+  mode: "service" | "costs" | "sale";
+  year: string;
+  includeCost: boolean;
+}) {
+  const v = s.Vehicles[0],
+    sum = totals(s, year);
+  return (
+    <article className="print-view">
+      <h1>
+        {mode === "costs"
+          ? "Kostenübersicht"
+          : mode === "sale"
+            ? "Fahrzeughistorie für Verkauf"
+            : "Privates Serviceheft"}
+      </h1>
+      <div className="print-meta">
+        <h2>
+          {v.manufacturer} {v.model}
+        </h2>
+        <p>
+          Stand:{" "}
+          {new Date().toLocaleDateString("de-DE", {
+            timeZone: "Europe/Berlin",
+          })}{" "}
+          ·{" "}
+          {mode === "costs"
+            ? "Kalenderjahr " + year
+            : "Alle dokumentierten Arbeiten"}
+        </p>
+        <p>
+          Motor: {v.engine ?? "unbekannt"} · Baujahr: {v.year ?? "unbekannt"} ·
+          Erstzulassung: {date(v.first_registration)}
+        </p>
+        {mode !== "sale" && (
+          <p>
+            FIN: {v.vin ?? "unbekannt"} · Kennzeichen: {v.plate ?? "unbekannt"}
+          </p>
+        )}
+      </div>
+      {mode === "costs" ? (
+        <>
+          <p>
+            Ist-Ausgaben inklusive Kauf: {money(sum.expenses)} · Betriebskosten:{" "}
+            {money(sum.operating)} · Einnahmen getrennt: {money(sum.income)}
+          </p>
+          <p>
+            Offen: {sum.unknown} Beträge, {sum.foreign} Fremdwährungen/unklare
+            Währungen, {sum.undated} Einträge ohne Datum.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Eintrag / Kategorie</th>
+                <th>Rechnung</th>
+                <th>Betrag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {s.Expenses.filter(
+                (e) => !e.voided && e.date?.startsWith(year),
+              ).map((e) => (
+                <tr key={e.id}>
+                  <td>{date(e.date)}</td>
+                  <td>
+                    {e.title}
+                    <br />
+                    {e.category}
+                  </td>
+                  <td>{e.invoice_number ?? "unbekannt"}</td>
+                  <td>
+                    {money(e.amount_cents, e.currency)}
+                    {e.cashflow_type === "income" ? " (Einnahme)" : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: "16%" }}>Datum / km</th>
+              <th>Arbeit / Durchführung</th>
+              <th style={{ width: "25%" }}>
+                Belegnummern{includeCost ? " / Kostenanteile" : ""}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {s.Work.filter((w) => w.status === "completed" && !w.voided)
+              .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
+              .map((w) => (
+                <tr key={w.id}>
+                  <td>
+                    {date(w.date)}
+                    <br />
+                    {w.odometer_km === null
+                      ? "km unbekannt"
+                      : w.odometer_km.toLocaleString("de-DE") + " km"}
+                  </td>
+                  <td>
+                    <strong>{w.title}</strong>
+                    <br />
+                    {w.performed_by === "self"
+                      ? "Eigenleistung"
+                      : w.performed_by === "workshop"
+                        ? "Werkstatt"
+                        : "Durchführung unbekannt"}
+                    <br />
+                    {w.workshop_snapshot && (
+                      <>
+                        {w.workshop_snapshot.name}
+                        {w.workshop_snapshot.address && (
+                          <> · {w.workshop_snapshot.address}</>
+                        )}
+                        <br />
+                      </>
+                    )}
+                    {w.description ?? ""}
+                    {w.parts?.map((p, i) => (
+                      <p key={i}>
+                        {p.description} · {p.part_number ?? "Teilenummer offen"}{" "}
+                        · {p.specification ?? "Freigabe offen"}
+                      </p>
+                    ))}
+                  </td>
+                  <td>
+                    {w.expense_refs.map((id) => {
+                      const e = s.Expenses.find((e) => e.id === id);
+                      const share = w.allocations.find(
+                        (a) => a.expense_id === id,
+                      );
+                      return e && !e.voided ? (
+                        <p key={id}>
+                          {e.invoice_number ?? "Nummer unbekannt"}
+                          {includeCost ? (
+                            <>
+                              <br />
+                              {share
+                                ? money(share.amount_cents, e.currency) +
+                                  " Anteil"
+                                : money(e.amount_cents, e.currency) +
+                                  " Rechnung gesamt (kann mehrere Arbeiten betreffen)"}
+                            </>
+                          ) : null}
+                        </p>
+                      ) : null;
+                    })}
+                    {!w.expense_refs.length
+                      ? "Keine neue Zahlung verknüpft"
+                      : ""}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
+      <p className="print-note">
+        Privat geführte Fahrzeugakte. Keine offizielle Herstellerdokumentation.
+        Unbekannte Angaben sind ausdrücklich offen. Anlagen und unveränderte
+        Originale sind separat exportierbar.
+      </p>
+    </article>
+  );
+}

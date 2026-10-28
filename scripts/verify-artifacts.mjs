@@ -1,6 +1,50 @@
-import fs from 'node:fs';import vm from 'node:vm';
-const code=fs.readFileSync('apps-script/dist/Code.js','utf8');const context=vm.createContext({});vm.runInContext(code,context,{timeout:10000});for(const name of ['scalaApi','setupOwner','installOwnerTrigger','dailyOwnerTask'])if(typeof context[name]!=='function')throw Error('Öffentliche Apps-Script-Funktion nicht ladbar: '+name);
-if(!fs.existsSync('dist/CNAME')||fs.readFileSync('dist/CNAME','utf8').trim()!==new URL(JSON.parse(fs.readFileSync('public/config.json','utf8')).origin).hostname)throw Error('Zieldomain fehlt im Build.');
-for(const file of ['worker.min.js','core/tesseract-core-lstm.wasm.js','core/tesseract-core-simd-lstm.wasm.js','lang/deu.traineddata.gz','lang/eng.traineddata.gz','pdfjs-LICENSE','tesseract-LICENSE.md']){const target='dist/ocr/'+file;if(!fs.existsSync(target)||!fs.statSync(target).size)throw Error('Lokale OCR-Datei fehlt im Build: '+target);}
-for(const forbidden of ['OWNER_EMAIL','REMINDER_EMAIL','BACKUP_FOLDER_ID','TEST_TOKEN_ONLY_IN_MEMORY','CLERK_SECRET_KEY','CLERK_JWT_KEY','RESEND_API_KEY','TANKERKOENIG_API_KEY']){for(const file of fs.readdirSync('dist/assets'))if(fs.readFileSync('dist/assets/'+file,'utf8').includes(forbidden))throw Error('Unzulässige private/testinterne Konfiguration im öffentlichen Bundle: '+forbidden);}
-console.log('Apps-Script-Bundle ohne Browser-/Node-Globals ladbar; Einstiegspunkte und Veröffentlichungstrennung geprüft.');
+import fs from "node:fs";
+for (const file of [
+  "worker.min.js",
+  "core/tesseract-core-lstm.wasm.js",
+  "core/tesseract-core-simd-lstm.wasm.js",
+  "lang/deu.traineddata.gz",
+  "lang/eng.traineddata.gz",
+  "pdfjs-LICENSE",
+  "tesseract-LICENSE.md",
+])
+  if (
+    !fs.existsSync("dist/ocr/" + file) ||
+    !fs.statSync("dist/ocr/" + file).size
+  )
+    throw Error("OCR-Datei fehlt: " + file);
+const files = fs.readdirSync("dist/assets").filter((f) => /\.m?js$/.test(f));
+const forbidden = [
+  "accounts.google.com/gsi",
+  "script.googleapis.com",
+  "GOOGLE_CLIENT_SECRET",
+  "CLERK_SECRET_KEY",
+  "CLERK_JWT_KEY",
+  "RESEND_API_KEY",
+  "TANKERKOENIG_API_KEY",
+  "new Function(",
+  'require("ajv/',
+];
+for (const file of files) {
+  const code = fs.readFileSync("dist/assets/" + file, "utf8");
+  for (const text of forbidden)
+    if (
+      code.includes(text) &&
+      !(text === "new Function(" && file.startsWith("pdf.worker"))
+    )
+      throw Error("Unzulässiger Inhalt im öffentlichen Bundle: " + text);
+}
+const routes = JSON.parse(fs.readFileSync("dist/_routes.json", "utf8"));
+const headers = fs.readFileSync("dist/_headers", "utf8");
+if (
+  !headers.includes("Content-Security-Policy:") ||
+  headers.includes("'unsafe-eval'") ||
+  !headers.includes("object-src 'none'")
+)
+  throw Error("Browser-Sicherheitsrichtlinie fehlt oder ist zu weit geöffnet.");
+const service = fs.readFileSync("auth/dist/service.js", "utf8");
+for (const value of ["/__fixture", "FIXTURE_TOKEN", "BROWSER_TEST_ORIGIN"])
+  if (service.includes(value)) throw Error("Testzugang im Produktions-Worker.");
+if (JSON.stringify(routes.include) !== '["/api/*"]')
+  throw Error("Nur API-Anfragen dürfen Functions ausführen.");
+console.log("Öffentliche Artefakte, OCR und API-Routing geprüft.");

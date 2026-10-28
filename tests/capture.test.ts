@@ -1,25 +1,212 @@
-import {describe,expect,it} from 'vitest';
-import {commitImport,csv,editEntity,emptyState,totals,validatePackage,validateState} from '../shared/logic';
-import {exactDecimal,validateCapture} from '../shared/capture';
-import {galleryPhotos} from '../shared/gallery';
-import {pkg,request,work} from './fixtures';
-const at='2026-10-26T12:00:00.000Z';
-function state(){const s=emptyState(at);s.Settings[0].workshops=[{id:'garage-1',name:'Meine Garage',address:'Musterweg 1',archived:false},{id:'shop-2',name:'Werkstatt Zwei',address:'',archived:false}];s.Settings[0].self_workshop_id='garage-1';return s;}
-function input(){const p=pkg();p.expenses[0].items=[{description:'Ölfilter',quantity:1,unit:'Stück',part_number:null}];p.work=[work({expense_refs:['e1'],performed_by:'self'})];return p;}
-const capture={workshops_by_work_ref:{w1:'garage-1'},prices_by_expense_ref:{e1:[{unit_price:'50.000',total_cents:5000,basis:'gross' as const}]}};
-describe('Werkstätten und Positionspreise ohne Änderung des Importvertrags',()=>{
- it('speichert Ausgabe und Arbeit mit historischen Werkstattangaben und zählt Kosten einmal',()=>{const p=input(),out=commitImport(state(),request(p,{capture}),at).state;expect(out.Work[0].workshop_snapshot).toEqual({profile_id:'garage-1',name:'Meine Garage',address:'Musterweg 1'});expect(out.Expenses[0].position_prices?.[0].unit_price).toBe('50.000');expect(totals(out).expenses).toBe(5000);const settings=out.Settings[0],next=editEntity(out,'Settings',settings.id,settings.revision,{workshops:settings.workshops!.map(w=>({...w,name:'Neu '+w.name}))},at);expect(next.Work[0].workshop_snapshot?.name).toBe('Meine Garage');});
- it('validiert v1-Pakete weiterhin streng und nimmt Zusatzpreise nur über Metadaten an',()=>{const p=input();expect(()=>validatePackage(p)).not.toThrow();(p.expenses[0].items![0] as any).unit_price='50.00';expect(()=>validatePackage(p)).toThrow();});
- it('weist fremde Referenzen, archivierte Profile und unpassende Preisanzahl ab',()=>{const p=input(),s=state();expect(()=>validateCapture({workshops_by_work_ref:{other:'garage-1'}},p,s)).toThrow();expect(()=>validateCapture({prices_by_expense_ref:{e1:[]}},p,s)).toThrow();s.Settings[0].workshops![0].archived=true;expect(()=>validateCapture(capture,p,s)).toThrow();});
- it('behält bei einem wiederholten Speichern dieselben Metadaten und weist geänderte Retry-Daten ab',()=>{const p=input(),r=request(p,{capture}),first=commitImport(state(),r,at);expect(commitImport(first.state,r,at).result.reused).toBe(true);expect(()=>commitImport(first.state,{...r,capture:{...capture,workshops_by_work_ref:{w1:'shop-2'}}},at)).toThrow(/anderen Daten/);});
- it('bestätigt einen abgeschlossenen Vorgang auch wenn dessen Werkstatt inzwischen archiviert wurde',()=>{const r=request(input(),{capture}),out=commitImport(state(),r,at).state;out.Settings[0].self_workshop_id=null;out.Settings[0].workshops![0].archived=true;expect(commitImport(out,r,at).result.reused).toBe(true);expect(out.Work[0].workshop_snapshot?.name).toBe('Meine Garage');expect(totals(out).expenses).toBe(5000);});
- it('erzeugt bei gleichem Paket mit anderer Vorgangskennung keine zweite Rechnung',()=>{const p=input(),first=commitImport(state(),request(p,{capture}),at).state,next=commitImport(first,request(p,{operation_id:'another-operation',capture}),at);expect(next.state.Expenses).toHaveLength(1);});
- it('akzeptiert alte Akten ohne zusätzliche Felder und verwirft ungültige Standards',()=>{expect(()=>validateState(emptyState())).not.toThrow();const s=state();s.Settings[0].self_workshop_id='missing';expect(()=>validateState(s)).toThrow(/Standard/);});
- it('speichert hochpräzise Einzelpreise als exakte Dezimalzeichenfolge',()=>{expect(exactDecimal('1,719')).toBe('1.719');expect(exactDecimal('0008,00')).toBe('8.00');expect(()=>exactDecimal('1e5')).toThrow();});
- it('exportiert optionale Positionspreise auch wenn die erste Ausgabe noch keine Zusatzfelder besitzt',()=>{const out=commitImport(state(),request(input(),{capture}),at).state;out.Expenses.unshift({...out.Expenses[0],id:'older',position_prices:undefined});delete out.Expenses[0].position_prices;const exported=csv(out,'Expenses');expect(exported.split('\r\n')[0]).toContain('position_prices');expect(exported).toContain('50.000');});
- it('liest bei besonderen Importreferenzen keine Eigenschaften aus Objektprototypen',()=>{const p=input();p.expenses[0].ref='constructor';p.work[0].ref='__proto__';p.work[0].expense_refs=['constructor'];const out=commitImport(state(),request(p,{capture:{prices_by_expense_ref:{},workshops_by_work_ref:{}}}),at).state;expect(out.Expenses[0].position_prices).toBeUndefined();expect(out.Work[0].workshop_snapshot).toBeUndefined();});
+import { describe, expect, it } from "vitest";
+import { exactDecimal, validateCapture } from "../shared/capture";
+import { galleryPhotos } from "../shared/gallery";
+import {
+  commitImport,
+  csv,
+  editEntity,
+  emptyState,
+  totals,
+  validatePackage,
+  validateState,
+} from "../shared/logic";
+import { pkg, request, work } from "./fixtures";
+const at = "2026-10-26T12:00:00.000Z";
+function state() {
+  const s = emptyState(at);
+  s.Settings[0].workshops = [
+    {
+      id: "garage-1",
+      name: "Meine Garage",
+      address: "Musterweg 1",
+      archived: false,
+    },
+    { id: "shop-2", name: "Werkstatt Zwei", address: "", archived: false },
+  ];
+  s.Settings[0].self_workshop_id = "garage-1";
+  return s;
+}
+function input() {
+  const p = pkg();
+  p.expenses[0].items = [
+    { description: "Ölfilter", quantity: 1, unit: "Stück", part_number: null },
+  ];
+  p.work = [work({ expense_refs: ["e1"], performed_by: "self" })];
+  return p;
+}
+const capture = {
+  workshops_by_work_ref: { w1: "garage-1" },
+  prices_by_expense_ref: {
+    e1: [{ unit_price: "50.000", total_cents: 5000, basis: "gross" as const }],
+  },
+};
+describe("Werkstätten und Positionspreise ohne Änderung des Importvertrags", () => {
+  it("speichert Ausgabe und Arbeit mit historischen Werkstattangaben und zählt Kosten einmal", () => {
+    const p = input(),
+      out = commitImport(state(), request(p, { capture }), at).state;
+    expect(out.Work[0].workshop_snapshot).toEqual({
+      profile_id: "garage-1",
+      name: "Meine Garage",
+      address: "Musterweg 1",
+    });
+    expect(out.Expenses[0].position_prices?.[0].unit_price).toBe("50.000");
+    expect(totals(out).expenses).toBe(5000);
+    const settings = out.Settings[0],
+      next = editEntity(
+        out,
+        "Settings",
+        settings.id,
+        settings.revision,
+        {
+          workshops: settings.workshops!.map((w) => ({
+            ...w,
+            name: "Neu " + w.name,
+          })),
+        },
+        at,
+      );
+    expect(next.Work[0].workshop_snapshot?.name).toBe("Meine Garage");
+  });
+  it("validiert v1-Pakete weiterhin streng und nimmt Zusatzpreise nur über Metadaten an", () => {
+    const p = input();
+    expect(() => validatePackage(p)).not.toThrow();
+    (p.expenses[0].items![0] as any).unit_price = "50.00";
+    expect(() => validatePackage(p)).toThrow();
+  });
+  it("weist fremde Referenzen, archivierte Profile und unpassende Preisanzahl ab", () => {
+    const p = input(),
+      s = state();
+    expect(() =>
+      validateCapture({ workshops_by_work_ref: { other: "garage-1" } }, p, s),
+    ).toThrow();
+    expect(() =>
+      validateCapture({ prices_by_expense_ref: { e1: [] } }, p, s),
+    ).toThrow();
+    s.Settings[0].workshops![0].archived = true;
+    expect(() => validateCapture(capture, p, s)).toThrow();
+  });
+  it("behält bei einem wiederholten Speichern dieselben Metadaten und weist geänderte Retry-Daten ab", () => {
+    const p = input(),
+      r = request(p, { capture }),
+      first = commitImport(state(), r, at);
+    expect(commitImport(first.state, r, at).result.reused).toBe(true);
+    expect(() =>
+      commitImport(
+        first.state,
+        {
+          ...r,
+          capture: { ...capture, workshops_by_work_ref: { w1: "shop-2" } },
+        },
+        at,
+      ),
+    ).toThrow(/anderen Daten/);
+  });
+  it("bestätigt einen abgeschlossenen Vorgang auch wenn dessen Werkstatt inzwischen archiviert wurde", () => {
+    const r = request(input(), { capture }),
+      out = commitImport(state(), r, at).state;
+    out.Settings[0].self_workshop_id = null;
+    out.Settings[0].workshops![0].archived = true;
+    expect(commitImport(out, r, at).result.reused).toBe(true);
+    expect(out.Work[0].workshop_snapshot?.name).toBe("Meine Garage");
+    expect(totals(out).expenses).toBe(5000);
+  });
+  it("erzeugt bei gleichem Paket mit anderer Vorgangskennung keine zweite Rechnung", () => {
+    const p = input(),
+      first = commitImport(state(), request(p, { capture }), at).state,
+      next = commitImport(
+        first,
+        request(p, { operation_id: "another-operation", capture }),
+        at,
+      );
+    expect(next.state.Expenses).toHaveLength(1);
+  });
+  it("akzeptiert alte Akten ohne zusätzliche Felder und verwirft ungültige Standards", () => {
+    expect(() => validateState(emptyState())).not.toThrow();
+    const s = state();
+    s.Settings[0].self_workshop_id = "missing";
+    expect(() => validateState(s)).toThrow(/Standard/);
+  });
+  it("speichert hochpräzise Einzelpreise als exakte Dezimalzeichenfolge", () => {
+    expect(exactDecimal("1,719")).toBe("1.719");
+    expect(exactDecimal("0008,00")).toBe("8.00");
+    expect(() => exactDecimal("1e5")).toThrow();
+  });
+  it("exportiert optionale Positionspreise auch wenn die erste Ausgabe noch keine Zusatzfelder besitzt", () => {
+    const out = commitImport(state(), request(input(), { capture }), at).state;
+    out.Expenses.unshift({
+      ...out.Expenses[0],
+      id: "older",
+      position_prices: undefined,
+    });
+    delete out.Expenses[0].position_prices;
+    const exported = csv(out, "Expenses");
+    expect(exported.split("\r\n")[0]).toContain("position_prices");
+    expect(exported).toContain("50.000");
+  });
+  it("liest bei besonderen Importreferenzen keine Eigenschaften aus Objektprototypen", () => {
+    const p = input();
+    p.expenses[0].ref = "constructor";
+    p.work[0].ref = "__proto__";
+    p.work[0].expense_refs = ["constructor"];
+    const out = commitImport(
+      state(),
+      request(p, {
+        capture: { prices_by_expense_ref: {}, workshops_by_work_ref: {} },
+      }),
+      at,
+    ).state;
+    expect(out.Expenses[0].position_prices).toBeUndefined();
+    expect(out.Work[0].workshop_snapshot).toBeUndefined();
+  });
 });
-describe('Fotogalerie',()=>{
- it('sortiert Standardfoto zuerst, dann neueste Fotos und lässt Rechnungsfotos heraus',()=>{const s=emptyState(at);const base={...s.Vehicles[0],ref:'p',source_filename:'test.jpg',title:'Bild',document_type:'photo' as const,page_numbers:undefined,sha256:'a'.repeat(64),size:5,mime:'image/jpeg',drive_id:'synthetic',missing:false};s.Documents=[{...base,id:'old',created_at:'2026-01-01T12:00:00Z'},{...base,id:'new',created_at:'2026-10-26T12:00:00Z'},{...base,id:'invoice',document_type:'invoice'}];expect(galleryPhotos(s).map(d=>d.id)).toEqual(['new','old']);s.Vehicles[0].photo_id='old';expect(galleryPhotos(s).map(d=>d.id)).toEqual(['old','new']);});
- it('behält ein früher ausgewähltes Bild anderer Dokumentart und ignoriert fehlende Originale',()=>{const s=emptyState(at),p=pkg();p.documents=[{ref:'d',title:'Altes Foto',source_filename:'foto.jpg',document_type:'other'}];let out=commitImport(s,request(p,{allow_missing:true}),at).state;const d=out.Documents[0];Object.assign(d,{mime:'image/jpeg',size:1,sha256:'a'.repeat(64),drive_id:'test',missing:false});out.Vehicles[0].photo_id=d.id;expect(galleryPhotos(out)).toHaveLength(1);d.missing=true;expect(galleryPhotos(out)).toHaveLength(0);});
+describe("Fotogalerie", () => {
+  it("sortiert Standardfoto zuerst, dann neueste Fotos und lässt Rechnungsfotos heraus", () => {
+    const s = emptyState(at);
+    const base = {
+      ...s.Vehicles[0],
+      ref: "p",
+      source_filename: "test.jpg",
+      title: "Bild",
+      document_type: "photo" as const,
+      page_numbers: undefined,
+      sha256: "a".repeat(64),
+      size: 5,
+      mime: "image/jpeg",
+      drive_id: "synthetic",
+      missing: false,
+    };
+    s.Documents = [
+      { ...base, id: "old", created_at: "2026-01-01T12:00:00Z" },
+      { ...base, id: "new", created_at: "2026-10-26T12:00:00Z" },
+      { ...base, id: "invoice", document_type: "invoice" },
+    ];
+    expect(galleryPhotos(s).map((d) => d.id)).toEqual(["new", "old"]);
+    s.Vehicles[0].photo_id = "old";
+    expect(galleryPhotos(s).map((d) => d.id)).toEqual(["old", "new"]);
+  });
+  it("behält ein früher ausgewähltes Bild anderer Dokumentart und ignoriert fehlende Originale", () => {
+    const s = emptyState(at),
+      p = pkg();
+    p.documents = [
+      {
+        ref: "d",
+        title: "Altes Foto",
+        source_filename: "foto.jpg",
+        document_type: "other",
+      },
+    ];
+    let out = commitImport(s, request(p, { allow_missing: true }), at).state;
+    const d = out.Documents[0];
+    Object.assign(d, {
+      mime: "image/jpeg",
+      size: 1,
+      sha256: "a".repeat(64),
+      drive_id: "test",
+      missing: false,
+    });
+    out.Vehicles[0].photo_id = d.id;
+    expect(galleryPhotos(out)).toHaveLength(1);
+    d.missing = true;
+    expect(galleryPhotos(out)).toHaveLength(0);
+  });
 });

@@ -1,10 +1,113 @@
-import {DatabaseSync} from 'node:sqlite';
-import fs from 'node:fs';
-import type {Bucket,Database,Statement,V2Env} from '../auth/src/v2/types';
-export function setupV2(){const sql=new DatabaseSync(':memory:');sql.exec(fs.readFileSync('auth/data-schema.sql','utf8'));sql.exec(fs.readFileSync('auth/schema.sql','utf8'));let failed=false;const queries:string[]=[];
- function statement(query:string,values:any[]=[]):Statement{return {bind(...args:any[]){return statement(query,args);},async first<T>(){queries.push(query);return (sql.prepare(query).get(...values)??null) as T|null;},async all<T>(){queries.push(query);return {results:sql.prepare(query).all(...values) as T[]};},async run(){queries.push(query);if(failed)throw Error('D1_ATOMIC_FAILURE');return sql.prepare(query).run(...values);}};}
- const db:Database={prepare:statement,async batch(statements){sql.exec('BEGIN');try{const results=[];for(const s of statements)results.push(await s.run());sql.exec('COMMIT');return results;}catch(e){sql.exec('ROLLBACK');throw e;}}};
- const objects=new Map<string,{bytes:Uint8Array;httpMetadata?:{contentType:string};customMetadata?:Record<string,string>}>();let failPut=false;const bucket:Bucket={async put(key,bytes,options){if(failPut)throw Error('R2_PUT_FAILED');objects.set(key,{bytes:new Uint8Array(bytes),...options});},async head(key){const v=objects.get(key);return v?{size:v.bytes.length,httpMetadata:v.httpMetadata,customMetadata:v.customMetadata}:null;},async get(key){const v=objects.get(key);return v?{size:v.bytes.length,httpMetadata:v.httpMetadata,customMetadata:v.customMetadata,arrayBuffer:async()=>new Uint8Array(v.bytes).buffer}:null;},async delete(key){for(const k of Array.isArray(key)?key:[key])objects.delete(k);}};
- const env:V2Env&{DB:Database}={APP_ORIGIN:'https://car.jurodak.com',AUTH_ORIGIN:'https://auth.jurodak.com',AUTH_BACKEND:'clerk',DATA_DB:db,FILES:bucket,DB:db,CLERK_PUBLISHABLE_KEY:'',CLERK_SECRET_KEY:'sk_test_SYNTHETIC',CLERK_JWT_KEY:'',CLERK_ISSUER:'https://synthetic.clerk.accounts.dev'};
- return {sql,env,db,bucket,objects,queries,failBatch(value:boolean){failed=value;},failPut(value:boolean){failPut=value;}};
+import fs from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import type { Bucket, Database, Statement, V2Env } from "../auth/src/v2/types";
+export function setupV2() {
+  const sql = new DatabaseSync(":memory:");
+  sql.exec(fs.readFileSync("auth/data-schema.sql", "utf8"));
+  sql.exec(fs.readFileSync("auth/migrations/0002-fuel.sql", "utf8"));
+  let failed = false;
+  const queries: string[] = [];
+  function statement(query: string, values: any[] = []): Statement {
+    return {
+      bind(...args: any[]) {
+        return statement(query, args);
+      },
+      async first<T>() {
+        queries.push(query);
+        return (sql.prepare(query).get(...values) ?? null) as T | null;
+      },
+      async all<T>() {
+        queries.push(query);
+        return { results: sql.prepare(query).all(...values) as T[] };
+      },
+      async run() {
+        queries.push(query);
+        if (failed) throw Error("D1_ATOMIC_FAILURE");
+        return sql.prepare(query).run(...values);
+      },
+    };
+  }
+  let queue: Promise<unknown> = Promise.resolve();
+  const db: Database = {
+    prepare: statement,
+    batch(statements) {
+      const action = queue.then(async () => {
+        sql.exec("BEGIN");
+        try {
+          const results = [];
+          for (const s of statements) results.push(await s.run());
+          sql.exec("COMMIT");
+          return results;
+        } catch (e) {
+          sql.exec("ROLLBACK");
+          throw e;
+        }
+      });
+      queue = action.catch(() => {});
+      return action;
+    },
+  };
+  const objects = new Map<
+    string,
+    {
+      bytes: Uint8Array;
+      httpMetadata?: { contentType: string };
+      customMetadata?: Record<string, string>;
+    }
+  >();
+  let failPut = false;
+  const bucket: Bucket = {
+    async put(key, bytes, options) {
+      if (failPut) throw Error("R2_PUT_FAILED");
+      objects.set(key, { bytes: new Uint8Array(bytes), ...options });
+    },
+    async head(key) {
+      const v = objects.get(key);
+      return v
+        ? {
+            size: v.bytes.length,
+            httpMetadata: v.httpMetadata,
+            customMetadata: v.customMetadata,
+          }
+        : null;
+    },
+    async get(key) {
+      const v = objects.get(key);
+      return v
+        ? {
+            size: v.bytes.length,
+            httpMetadata: v.httpMetadata,
+            customMetadata: v.customMetadata,
+            arrayBuffer: async () => new Uint8Array(v.bytes).buffer,
+          }
+        : null;
+    },
+    async delete(key) {
+      for (const k of Array.isArray(key) ? key : [key]) objects.delete(k);
+    },
+  };
+  const env: V2Env & { DB: Database } = {
+    APP_ORIGIN: "https://car.jurodak.com",
+    DATA_DB: db,
+    FILES: bucket,
+    DB: db,
+    CLERK_PUBLISHABLE_KEY: "",
+    CLERK_SECRET_KEY: "sk_test_SYNTHETIC",
+    CLERK_JWT_KEY: "",
+    CLERK_ISSUER: "https://synthetic.clerk.accounts.dev",
+  };
+  return {
+    sql,
+    env,
+    db,
+    bucket,
+    objects,
+    queries,
+    failBatch(value: boolean) {
+      failed = value;
+    },
+    failPut(value: boolean) {
+      failPut = value;
+    },
+  };
 }

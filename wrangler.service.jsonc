@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fahrzeugakte-tagespruefung",
+  "main": "auth/dist/service.js",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "APP_ORIGIN": "https://car.jurodak.com",
+    "CLERK_ISSUER": "https://clerk.jurodak.com",
+    "CLERK_PUBLISHABLE_KEY": "CLERK_PUBLISHABLE_KEY_EINTRAGEN",
+    "MAIL_FROM": "Fahrzeugakte <hinweise@notify.jurodak.com>",
+    "AUTOMATION_ENABLED": "false"
+  },
+  "d1_databases": [
+    {
+      "binding": "DATA_DB",
+      "database_name": "fahrzeugakte-daten",
+      "database_id": "f6c70c44-d825-46a8-a847-52c6b1945226",
+      "migrations_dir": "auth/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "fahrzeugakte-originale"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "no_bundle": true,
+  "find_additional_modules": false
+}

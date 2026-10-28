@@ -1,4 +1,48 @@
-import {useState,type ReactNode} from 'react';
-import {MigrationPanel} from './MigrationPanel';
-import type {Adapter} from './adapter';
-export function CloudStart({adapter,onDone,onLogout,children}:{adapter:Adapter;onDone:()=>Promise<void>;onLogout:()=>void;children:ReactNode}){const [mode,setMode]=useState<'import'|'new'>('import');return <div className="cloud-start"><header><strong>Fahrzeugakte</strong><button className="button" onClick={onLogout}>Abmelden</button></header><main><h1>Dein Konto ist bereit</h1><div className="segmented"><button className={mode==='import'?'selected':''} onClick={()=>setMode('import')}>Akte übernehmen</button><button className={mode==='new'?'selected':''} onClick={()=>setMode('new')}>Neu beginnen</button></div>{mode==='import'?<MigrationPanel adapter={adapter} onDone={onDone}/>:children}</main></div>;}
+import { useState, type ReactNode } from "react";
+import { MigrationPanel } from "./MigrationPanel";
+import type { Adapter } from "./adapter";
+export function CloudStart({
+  adapter,
+  onDone,
+  onLogout,
+  children,
+}: {
+  adapter: Adapter;
+  onDone: () => Promise<void>;
+  onLogout: () => void;
+  children: ReactNode;
+}) {
+  const [mode, setMode] = useState<"import" | "new">("import");
+  return (
+    <div className="cloud-start">
+      <header>
+        <strong>Fahrzeugakte</strong>
+        <button className="button" onClick={onLogout}>
+          Abmelden
+        </button>
+      </header>
+      <main>
+        <h1>Dein Konto ist bereit</h1>
+        <div className="segmented">
+          <button
+            className={mode === "import" ? "selected" : ""}
+            onClick={() => setMode("import")}
+          >
+            Akte übernehmen
+          </button>
+          <button
+            className={mode === "new" ? "selected" : ""}
+            onClick={() => setMode("new")}
+          >
+            Neu beginnen
+          </button>
+        </div>
+        {mode === "import" ? (
+          <MigrationPanel adapter={adapter} onDone={onDone} />
+        ) : (
+          children
+        )}
+      </main>
+    </div>
+  );
+}

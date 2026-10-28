@@ -7,14 +7,19 @@
     "dev": "node scripts/prepare-ocr.mjs && vite --host 127.0.0.1",
     "preview": "vite preview --host 127.0.0.1",
     "schema": "node scripts/schema.mjs",
-    "build:backend": "node scripts/build-backend.mjs",
-    "build:auth": "node scripts/build-auth.mjs",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm typecheck && node scripts/prepare-ocr.mjs && vite build && pnpm build:backend && pnpm build:auth && node scripts/verify-artifacts.mjs",
+    "build": "pnpm validators && pnpm typecheck && node scripts/prepare-ocr.mjs && vite build && pnpm build:service && node scripts/verify-artifacts.mjs",
     "test": "vitest run",
     "check": "pnpm test && pnpm build",
     "configure": "node scripts/configure.mjs",
-    "package:source": "node scripts/package-source.mjs"
+    "package:source": "node scripts/package-source.mjs",
+    "validators": "node scripts/validators.mjs",
+    "dev:api": "wrangler dev --config wrangler.local.jsonc --port 8787 --local",
+    "db:local": "node scripts/init-local.mjs",
+    "test:runtime": "node scripts/test-runtime.mjs",
+    "build:service": "node scripts/build-service.mjs",
+    "test:large": "node --expose-gc scripts/test-backups-large.mjs",
+    "test:browser": "node scripts/browser-dev.mjs"
   },
   "dependencies": {
     "@clerk/backend": "3.26.2",
@@ -38,9 +43,11 @@
     "@types/react": "19.1.0",
     "@types/react-dom": "19.1.1",
     "esbuild": "0.28.2",
+    "prettier": "3.9.10",
     "typescript": "5.9.3",
     "vite": "8.3.4",
-    "vitest": "5.0.5"
+    "vitest": "5.0.5",
+    "wrangler": "4.153.0"
   },
   "packageManager": "pnpm@11.25.0"
 }
