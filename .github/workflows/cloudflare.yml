@@ -72,7 +72,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: false
       - name: Geprüfte Website veröffentlichen
-        run: pnpm exec wrangler pages deploy dist --config wrangler.pages.jsonc --branch main --commit-hash "$GITHUB_SHA"
+        run: pnpm exec wrangler pages deploy dist --project-name scala-fahrzeugakte --branch main --commit-hash "$GITHUB_SHA"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

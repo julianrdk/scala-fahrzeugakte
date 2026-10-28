@@ -67,7 +67,7 @@ Der Workflow verwendet keine Produktiv-Secrets bei Pull Requests oder Tests. D1-
 
 ## 4. Pages und Domain umstellen
 
-1. Der Pages-Service erhält die Bindung **API → fahrzeugakte-tagespruefung** aus `wrangler.pages.jsonc`. Pages benötigt danach selbst keine Clerk-, Resend-, Tankerkönig- oder Datenbankschlüssel mehr.
+1. In Cloudflare Pages unter **scala-fahrzeugakte → Settings → Bindings → Add → Service binding** die Produktionsbindung **API → fahrzeugakte-tagespruefung** anlegen. Sie gilt ab der nächsten Pages-Veröffentlichung. `wrangler.pages.jsonc` dokumentiert dieselbe Bindung für die lokale Entwicklung; `wrangler pages deploy` akzeptiert keine frei benannte Konfigurationsdatei. Pages benötigt selbst keine Clerk-, Resend-, Tankerkönig- oder Datenbankschlüssel.
 2. Der erste Commit auf `main` führt nur die Prüfungen aus, solange `FLEET_RELEASE_READY=false` ist. Nach eingetragenen Secrets und bestandener Prüfung wird `FLEET_RELEASE_READY=true` gesetzt und in GitHub Actions der Workflow **Prüfen und gemeinsam auf Cloudflare veröffentlichen** auf `main` manuell gestartet. Der Workflow prüft erneut und veröffentlicht erst den Worker, dann die Website.
 3. Cloudflare → **Workers & Pages → scala-fahrzeugakte → Custom domains → Set up a custom domain**: `car.jurodak.com` hinzufügen. Externen DNS-Anbieter verwenden.
 4. IONOS → **Domains & SSL → jurodak.com → DNS**: ausschließlich den CNAME mit Host `car` von `julianrdk.github.io` auf `scala-fahrzeugakte.pages.dev` ändern. Andere Einträge erhalten.
