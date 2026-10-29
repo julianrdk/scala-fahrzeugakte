@@ -1,5 +1,7 @@
 # Prüfbericht – Mehrere Fahrzeuge und bereinigte Cloudflare-Struktur
 
+Aktuelle Ergänzung: [KI-Assistent, 29. Oktober 2026](docs/PRUEFSTAND_KI_2026-10-29.md) mit 246 Tests, lokaler Cloudflare-Prüfung und den noch offenen echten Browser-/Anbietertests. Der folgende Abschnitt dokumentiert den vorherigen Stand.
+
 Stand: 28. Oktober 2026. Die Umsetzung und die folgenden Prüfungen erfolgten lokal. Produktive Kontoeinstellungen, Daten und Veröffentlichungen wurden nicht geändert. Commit und Push bleiben beim Nutzer. Die Freigabe der produktiven Umstellung steht noch aus.
 
 ## Bestandene Prüfungen

@@ -22,6 +22,12 @@ import { document, upload } from "./files";
 import { requestBackup, testMail } from "./jobs";
 import { createFleet, fleetAccount, migrateLegacy, vehicle } from "./store";
 import { bootstrap, listPage, view } from "./views";
+import {
+  assistantMessage,
+  assistantTranscribe,
+  changeAIProfile,
+  readAIProfile,
+} from "../ai";
 export type FleetEnv = V2Env & {
   LOCAL_DEVELOPMENT?: string;
   TANKERKOENIG_API_KEY?: string;
@@ -85,6 +91,11 @@ export async function handle(request: Request, env: FleetEnv) {
       a = (await fleetAccount(env, owner))!;
     }
     const fuelEnv: FuelEnv = { ...env, DB: storage(env).db };
+    if (path === "/v3/ai/profile") {
+      if (request.method === "GET")
+        return respond(await readAIProfile(env, owner));
+      return respond(await changeAIProfile(env, owner, request));
+    }
     if (path === "/v3/bootstrap" && request.method === "GET") {
       const out = await bootstrap(env, a),
         id = selectedVehicle(out.vehicles, url.searchParams.get("vehicle"));
@@ -152,6 +163,10 @@ export async function handle(request: Request, env: FleetEnv) {
     if (!match) problem(404, "Aufruf nicht gefunden.");
     const id = decodeURIComponent(match[1]),
       tail = match[2];
+    if (tail === "assistant/message" && request.method === "POST")
+      return respond(await assistantMessage(env, a, id, request));
+    if (tail === "assistant/transcribe" && request.method === "POST")
+      return respond(await assistantTranscribe(env, a, id, request));
     if (tail === "view" && request.method === "GET")
       return respond(
         await view(

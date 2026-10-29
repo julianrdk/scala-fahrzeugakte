@@ -77,7 +77,11 @@ for (const relative of new Set(
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 10000000)
     throw Error("Unzulässige Quelldatei: " + relative);
   const bytes = fs.readFileSync(absolute);
-  if (/(?:sk_live_|re_)[A-Za-z0-9_-]{24,}/.test(bytes.toString()))
+  if (
+    /(?:sk_live_|re_|gsk_(?!SYNTHETIC_))[A-Za-z0-9_-]{24,}/.test(
+      bytes.toString(),
+    )
+  )
     throw Error(
       "Möglicher geheimer Schlüssel; Archiv abgebrochen: " + relative,
     );

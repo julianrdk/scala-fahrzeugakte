@@ -18,6 +18,7 @@ const vars = {
     .toString(),
   FIXTURE_TOKEN: fixture,
   AUTOMATION_ENABLED: "false",
+  AI_CREDENTIALS_KEY: Buffer.alloc(32, 7).toString("base64"),
 };
 function statements(sql) {
   const out = [];
@@ -108,7 +109,11 @@ async function call(path, body, owner = "user_a") {
   };
 }
 try {
-  for (const file of ["auth/data-schema.sql", "auth/migrations/0003-fleet.sql"])
+  for (const file of [
+    "auth/data-schema.sql",
+    "auth/migrations/0003-fleet.sql",
+    "auth/migrations/0004-ai.sql",
+  ])
     await seed({ schema: statements(fs.readFileSync(file, "utf8")) });
   for (const n of [100, 1000, 3000]) {
     const { vehicle } = await seed({ expenses: n, linked: true }),
@@ -147,6 +152,24 @@ try {
       edit_bytes: edit.bytes,
     });
   }
+  const ai = await seed({ assistant: true });
+  if (
+    !ai.encrypted ||
+    ai.reply.draft.package.expenses[0].amount_cents !== 6500 ||
+    ai.transcript.text !== "Synthetisches Diktat"
+  )
+    throw Error("KI in workerd nicht prüfbar.");
+  if (
+    !(await call("ai/profile")).value.configured ||
+    (await call("ai/profile", undefined, "user_b")).value.configured
+  )
+    throw Error("KI-Schlüssel nicht kontogetrennt.");
+  await call("ai/profile", { action: "remove" }, "user_b");
+  if (!(await call("ai/profile")).value.configured)
+    throw Error("Fremdes Entfernen verändert Schlüssel.");
+  await call("ai/profile", { action: "remove" });
+  if ((await call("ai/profile")).value.configured)
+    throw Error("KI-Schlüssel nicht entfernt.");
   fs.mkdirSync("test-results", { recursive: true });
   fs.writeFileSync(
     "test-results/runtime.json",
@@ -155,6 +178,12 @@ try {
         runtime: "Cloudflare workerd lokal",
         note: "Lokale Antwortzeiten einschließlich D1. Keine Messung des produktiven CPU-Kontingents.",
         results,
+        ai: {
+          encrypted: ai.encrypted,
+          simulatedProvider: true,
+          wall_ms: Math.round(ai.wallMs),
+          note: "Enthält lokale D1-Zeiten und WebCrypto; keine produktive CPU-Messung.",
+        },
       },
       null,
       2,

@@ -1,5 +1,13 @@
 import { ChevronRight, Download } from "lucide-react";
-import { Suspense, lazy, useState, type FormEvent } from "react";
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import type { AssistantDraft, AssistantSeed } from "../../shared/assistant";
 import { validateCapture } from "../../shared/capture";
 import {
   autoMatch,
@@ -22,6 +30,7 @@ import { prepareFile, type Adapter } from "../adapter";
 import { download } from "../backup";
 import "../cloudflare.css";
 import { Field, captureExample } from "../Field";
+import { ExpenseFields, WorkFields } from "../DraftFields";
 import "../login.css";
 import {
   Btn,
@@ -45,6 +54,8 @@ export function Capture({
   busy,
   supported,
   onReceiptDone,
+  onAssistant,
+  onAssistantContext,
 }: {
   s: State;
   adapter: Adapter;
@@ -53,107 +64,172 @@ export function Capture({
   busy: boolean;
   supported: boolean;
   onReceiptDone: () => Promise<void>;
+  onAssistant?: (seed?: AssistantSeed) => void;
+  onAssistantContext?: (factory: (() => AssistantSeed) | null) => void;
 }) {
-  const [mode, setMode] = useState<"manual" | "chat" | "receipt">("receipt"),
+  const [mode, setMode] = useState<"manual" | "json" | "ai" | "receipt">(
+      "receipt",
+    ),
     [text, setText] = useState(""),
     [kind, setKind] = useState("expense"),
     [cat, setCat] = useState<string>(categories[0]),
     [manualPerformed, setManualPerformed] =
       useState<WorkInput["performed_by"]>("unknown"),
     [manualWorkshop, setManualWorkshop] = useState("");
-  const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    run(async () => {
-      const p = blankPackage(),
-        title = String(f.get("title")).trim(),
-        d = String(f.get("date") ?? "") || null,
-        km = number(String(f.get("km") ?? ""));
-      p.vehicle_label = vehicleName(s.Vehicles[0]) || null;
-      if (kind === "expense") {
-        const expense: ExpenseInput = {
-          ref: "expense1",
-          title,
-          category: cat as any,
-          date: d,
-          odometer_km: km,
-          amount_cents: cents(String(f.get("amount"))),
-          currency: String(f.get("currency")) || null,
-          vendor: String(f.get("vendor")) || null,
-          invoice_number: String(f.get("invoice")) || null,
-          document_refs: [],
-          notes: String(f.get("notes")) || null,
-          cashflow_type: f.get("income") ? "income" : "expense",
+  const manualForm = useRef<HTMLFormElement>(null),
+    touched = useRef(new Set<string>());
+  const buildManual = (f: FormData): AssistantDraft => {
+    const p = blankPackage(),
+      title =
+        String(f.get("title") ?? "").trim() ||
+        (kind === "work" ? "Neue Arbeit" : "Neue Ausgabe"),
+      d = String(f.get("date") ?? "") || null,
+      km = number(String(f.get("km") ?? ""));
+    p.vehicle_label = vehicleName(s.Vehicles[0]) || null;
+    if (kind === "expense") {
+      const expense: ExpenseInput = {
+        ref: "expense1",
+        title,
+        category: cat as any,
+        date: d,
+        odometer_km: km,
+        amount_cents: cents(String(f.get("amount"))),
+        currency: String(f.get("currency")) || null,
+        vendor: String(f.get("vendor")) || null,
+        invoice_number: String(f.get("invoice")) || null,
+        document_refs: [],
+        notes: String(f.get("notes")) || null,
+        cashflow_type: f.get("income") ? "income" : "expense",
+      };
+      if (cat === "Tanken")
+        expense.fuel = {
+          liters: number(String(f.get("liters"))),
+          fuel_type: String(f.get("fuel_type")) || null,
+          full_tank:
+            f.get("tank") === "unknown" ? null : f.get("tank") === "full",
+          missed_previous_fillup:
+            f.get("missed") === "unknown" ? null : f.get("missed") === "yes",
+          station_name: String(f.get("station")) || null,
         };
-        if (cat === "Tanken")
-          expense.fuel = {
-            liters: number(String(f.get("liters"))),
-            fuel_type: String(f.get("fuel_type")) || null,
-            full_tank:
-              f.get("tank") === "unknown" ? null : f.get("tank") === "full",
-            missed_previous_fillup:
-              f.get("missed") === "unknown" ? null : f.get("missed") === "yes",
-            station_name: String(f.get("station")) || null,
-          };
-        if (f.get("part_description"))
-          expense.items = [
-            {
-              description: String(f.get("part_description")),
-              part_number: String(f.get("part_number")) || null,
-              quantity: number(String(f.get("quantity"))),
-              unit: String(f.get("unit")) || null,
-              specification: String(f.get("spec")) || null,
-            },
-          ];
-        p.expenses.push(expense);
-      } else if (kind === "work") {
-        const w: WorkInput = {
-          ref: "work1",
-          title,
-          kind: String(f.get("work_kind")) as any,
-          status: String(f.get("status")) as any,
-          date: d,
-          odometer_km: km,
-          performed_by: String(f.get("performed")) as any,
-          description: String(f.get("notes")) || null,
-          expense_refs: [],
-          document_refs: [],
-          estimated_cost_cents: cents(String(f.get("estimate") ?? "")),
-        };
-        if (f.get("part_description"))
-          w.parts = [
-            {
-              description: String(f.get("part_description")),
-              part_number: String(f.get("part_number")) || null,
-              quantity: number(String(f.get("quantity"))),
-              unit: String(f.get("unit")) || null,
-              specification: String(f.get("spec")) || null,
-            },
-          ];
-        if (w.kind === "modification")
-          w.modification_details = {
-            manufacturer: String(f.get("manufacturer")) || null,
+      if (f.get("part_description"))
+        expense.items = [
+          {
+            description: String(f.get("part_description")),
             part_number: String(f.get("part_number")) || null,
-            approval_number: String(f.get("approval")) || null,
-            status: String(f.get("mod_status")) as any,
-          };
-        p.work.push(w);
-      } else {
-        p.documents.push({
-          ref: "doc1",
-          title,
-          source_filename: null,
-          document_type: String(f.get("doctype")) as any,
-        });
-      }
-      onPreview(
-        p,
+            quantity: number(String(f.get("quantity"))),
+            unit: String(f.get("unit")) || null,
+            specification: String(f.get("spec")) || null,
+          },
+        ];
+      p.expenses.push(expense);
+    } else if (kind === "work") {
+      const w: WorkInput = {
+        ref: "work1",
+        title,
+        kind: String(f.get("work_kind")) as any,
+        status: String(f.get("status")) as any,
+        date: d,
+        odometer_km: km,
+        performed_by: String(f.get("performed")) as any,
+        description: String(f.get("notes")) || null,
+        expense_refs: [],
+        document_refs: [],
+        estimated_cost_cents: cents(String(f.get("estimate") ?? "")),
+      };
+      if (f.get("part_description"))
+        w.parts = [
+          {
+            description: String(f.get("part_description")),
+            part_number: String(f.get("part_number")) || null,
+            quantity: number(String(f.get("quantity"))),
+            unit: String(f.get("unit")) || null,
+            specification: String(f.get("spec")) || null,
+          },
+        ];
+      if (w.kind === "modification")
+        w.modification_details = {
+          manufacturer: String(f.get("manufacturer")) || null,
+          part_number: String(f.get("part_number")) || null,
+          approval_number: String(f.get("approval")) || null,
+          status: String(f.get("mod_status")) as any,
+        };
+      p.work.push(w);
+    } else {
+      p.documents.push({
+        ref: "doc1",
+        title,
+        source_filename: null,
+        document_type: String(f.get("doctype")) as any,
+      });
+    }
+    return {
+      package: p,
+      capture:
         kind === "work" && manualWorkshop
           ? { workshops_by_work_ref: { work1: manualWorkshop } }
-          : undefined,
-      );
+          : {},
+    };
+  };
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    run(async () => {
+      const draft = buildManual(data);
+      onPreview(draft.package, draft.capture);
     });
   };
+  function manualSeed(): AssistantSeed {
+    if (!manualForm.current)
+      throw Error("Bitte zuerst das manuelle Formular öffnen.");
+    const data = new FormData(manualForm.current);
+    const draft = buildManual(data),
+      table = kind === "work" ? "work" : "expenses",
+      ref = kind === "work" ? "work1" : "expense1";
+    const fields: Record<string, string> = {
+      title: "title",
+      date: "date",
+      km: "odometer_km",
+      amount: "amount_cents",
+      currency: "currency",
+      vendor: "vendor",
+      invoice: "invoice_number",
+      notes: kind === "work" ? "description" : "notes",
+      income: "cashflow_type",
+      work_kind: "kind",
+      status: "status",
+      performed: "performed_by",
+      estimate: "estimated_cost_cents",
+      category: "category",
+      liters: "fuel",
+      fuel_type: "fuel",
+      tank: "fuel",
+      missed: "fuel",
+      station: "fuel",
+      part_description: kind === "work" ? "parts" : "items",
+      part_number: kind === "work" ? "parts" : "items",
+      quantity: kind === "work" ? "parts" : "items",
+      unit: kind === "work" ? "parts" : "items",
+      spec: kind === "work" ? "parts" : "items",
+      manufacturer: "modification_details",
+      approval: "modification_details",
+      mod_status: "modification_details",
+    };
+    return {
+      draft,
+      protectedFields: Array.from(touched.current).flatMap((name) =>
+        fields[name] ? [`${table}.${ref}.${fields[name]}`] : [],
+      ),
+    };
+  }
+  function assistManual() {
+    void run(async () => onAssistant?.(manualSeed()));
+  }
+  useEffect(() => {
+    onAssistantContext?.(
+      mode === "manual" && kind !== "document" ? manualSeed : null,
+    );
+    return () => onAssistantContext?.(null);
+  });
   return (
     <section
       className={"panel capture" + (mode === "receipt" ? " capture-wide" : "")}
@@ -172,10 +248,17 @@ export function Capture({
           Manuell
         </button>
         <button
-          className={mode === "chat" ? "selected" : ""}
-          onClick={() => setMode("chat")}
+          className={mode === "ai" ? "selected" : ""}
+          onClick={() => {
+            if (mode === "manual" && kind !== "document") {
+              assistManual();
+              return;
+            }
+            setMode("ai");
+            onAssistant?.();
+          }}
         >
-          Aus ChatGPT
+          Mit KI
         </button>
       </div>
       {mode === "receipt" ? (
@@ -189,14 +272,29 @@ export function Capture({
             supported={supported}
           />
         </Suspense>
-      ) : mode === "chat" ? (
+      ) : mode === "ai" ? (
         <>
-          <h2>JSON einfügen</h2>
+          <h2>Beschreiben oder diktieren</h2>
+          <p>
+            Arbeit, Vorhaben oder Ausgabe als Entwurf vorbereiten und
+            anschließend prüfen.
+          </p>
+          <button
+            className="button primary"
+            type="button"
+            onClick={() => onAssistant?.()}
+          >
+            Assistent öffnen
+          </button>
+        </>
+      ) : mode === "json" ? (
+        <>
+          <h2>JSON importieren</h2>
           <p className="muted">
-            Kopiere das Paket aus ChatGPT. Im nächsten Schritt prüfst du
+            Füge ein Paket im JSON-Vertrag v1 ein. Im nächsten Schritt prüfst du
             Einträge und ordnest Originaldateien zu.
           </p>
-          <Field label="JSON aus ChatGPT">
+          <Field label="JSON-Paket">
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -239,7 +337,19 @@ export function Capture({
       ) : (
         <>
           <h2>Was möchtest du erfassen?</h2>
-          <form onSubmit={submit}>
+          <form
+            onSubmit={submit}
+            ref={manualForm}
+            onChangeCapture={(e) => {
+              const el = e.target as HTMLInputElement;
+              if (el.name) touched.current.add(el.name);
+            }}
+          >
+            {kind !== "document" && (
+              <button type="button" className="button" onClick={assistManual}>
+                Mit KI ergänzen
+              </button>
+            )}
             <Field label="Eintragsart">
               <select value={kind} onChange={(e) => setKind(e.target.value)}>
                 <option value="expense">Ausgabe / Einnahme</option>
@@ -258,7 +368,11 @@ export function Capture({
               </Field>
               {kind === "expense" && (
                 <Field label="Kategorie">
-                  <select value={cat} onChange={(e) => setCat(e.target.value)}>
+                  <select
+                    name="category"
+                    value={cat}
+                    onChange={(e) => setCat(e.target.value)}
+                  >
                     {categories.slice(0, 3).map((c) => (
                       <option key={c}>{c}</option>
                     ))}
@@ -473,12 +587,23 @@ export function Capture({
           </form>
         </>
       )}
+      <details className="capture-advanced">
+        <summary>Weitere Importmöglichkeiten</summary>
+        <button
+          className="button"
+          type="button"
+          onClick={() => setMode("json")}
+        >
+          JSON importieren
+        </button>
+      </details>
     </section>
   );
 }
 export function ImportPreview({
   initial,
   initialCapture,
+  initialLinks,
   captureSupported,
   s,
   adapter,
@@ -487,9 +612,12 @@ export function ImportPreview({
   onDone,
   onBack,
   setProgress,
+  onAssistant,
+  onAssistantContext,
 }: {
   initial: ImportPackage;
   initialCapture?: CaptureMetadata;
+  initialLinks?: Record<string, string[]>;
   captureSupported: boolean;
   s: State;
   adapter: Adapter | null;
@@ -498,6 +626,8 @@ export function ImportPreview({
   onDone: (reused?: boolean) => Promise<void>;
   onBack: () => void;
   setProgress: (x: string) => void;
+  onAssistant?: (seed?: AssistantSeed) => void;
+  onAssistantContext?: (factory: (() => AssistantSeed) | null) => void;
 }) {
   const [capture, setCapture] = useState<CaptureMetadata>(initialCapture ?? {});
   const [p, setP] = useState(clone(initial)),
@@ -508,10 +638,26 @@ export function ImportPreview({
     [allowMissing, setAllowMissing] = useState(false),
     [confirmRules, setConfirmRules] = useState(false),
     [reason, setReason] = useState(""),
-    [links, setLinks] = useState<Record<string, string[]>>({}),
+    [links, setLinks] = useState<Record<string, string[]>>(
+      clone(initialLinks ?? {}),
+    ),
     [operation, setOperation] = useState(crypto.randomUUID()),
     [frozen, setFrozen] = useState(false),
     [hashes, setHashes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    onAssistantContext?.(
+      !p.documents.length && !p.reminders.length
+        ? () => {
+            if (frozen)
+              throw Error(
+                "Bitte den unbestätigten Speichervorgang zuerst prüfen.",
+              );
+            return { draft: { package: p, capture }, links };
+          }
+        : null,
+    );
+    return () => onAssistantContext?.(null);
+  });
   function change(next: ImportPackage) {
     if (frozen) return;
     setP(next);
@@ -591,7 +737,19 @@ export function ImportPreview({
   return (
     <section className="panel">
       <div className="section-heading">
-        <h2>Import prüfen</h2>
+        <h2>Entwurf prüfen</h2>
+        {onAssistant && !p.documents.length && !p.reminders.length && (
+          <button
+            className="button"
+            type="button"
+            disabled={frozen || busy}
+            onClick={() =>
+              onAssistant({ draft: { package: p, capture }, links })
+            }
+          >
+            Mit KI ergänzen
+          </button>
+        )}
         <Btn onClick={onBack} disabled={frozen}>
           Zurück
         </Btn>
@@ -613,86 +771,115 @@ export function ImportPreview({
         <legend>Einträge vor dem Speichern bearbeiten</legend>
         {p.expenses.map((e, i) => (
           <div className="review-entry" key={e.ref}>
-            <strong>Ausgabe {i + 1}</strong>
-            <div className="form-grid">
-              <Field label="Titel">
-                <input
-                  value={e.title}
-                  onChange={(x) => {
-                    const q = clone(p);
-                    q.expenses[i].title = x.target.value;
-                    change(q);
-                  }}
-                />
-              </Field>
-              <Field label="Kategorie">
-                <select
-                  value={e.category ?? ""}
-                  onChange={(x) => {
-                    const q = clone(p);
-                    q.expenses[i].category = (x.target.value || null) as any;
-                    change(q);
-                  }}
-                >
-                  <option value="">Noch ungeklärt</option>
-                  {categories.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Datum">
-                <input
-                  type="date"
-                  value={e.date ?? ""}
-                  onChange={(x) => {
-                    const q = clone(p);
-                    q.expenses[i].date = x.target.value || null;
-                    change(q);
-                  }}
-                />
-              </Field>
-              <Field
-                label="Betrag in Cent"
-                hint="Leer bleibt unbekannt; ganze Cent verwenden."
+            <div className="section-heading">
+              <strong>Ausgabe {i + 1}</strong>
+              <Btn
+                onClick={() => {
+                  const q = clone(p);
+                  q.expenses.splice(i, 1);
+                  q.work.forEach(
+                    (w) =>
+                      (w.expense_refs = w.expense_refs.filter(
+                        (r) => r !== e.ref,
+                      )),
+                  );
+                  change(q);
+                  setCapture((c) => {
+                    const next = clone(c);
+                    delete next.prices_by_expense_ref?.[e.ref];
+                    return next;
+                  });
+                }}
               >
-                <input
-                  inputMode="numeric"
-                  value={e.amount_cents ?? ""}
-                  onChange={(x) => {
-                    const q = clone(p);
-                    q.expenses[i].amount_cents =
-                      x.target.value === "" ? null : Number(x.target.value);
-                    change(q);
-                  }}
-                />
-              </Field>
+                Ausgabe aus Entwurf entfernen
+              </Btn>
             </div>
+            <ExpenseFields
+              value={e}
+              onChange={(next) => {
+                const q = clone(p);
+                q.expenses[i] = next;
+                change(q);
+              }}
+              prices={capture.prices_by_expense_ref?.[e.ref] ?? []}
+              onPrices={(parts, prices) => {
+                const q = clone(p);
+                q.expenses[i].items = parts;
+                change(q);
+                setCapture((c) => ({
+                  ...c,
+                  prices_by_expense_ref: {
+                    ...c.prices_by_expense_ref,
+                    [e.ref]: prices,
+                  },
+                }));
+              }}
+            />
           </div>
         ))}
         {p.work.map((w, i) => (
           <div className="review-entry" key={w.ref}>
-            <strong>Arbeit {i + 1}</strong>
+            <div className="section-heading">
+              <strong>Arbeit {i + 1}</strong>
+              <Btn
+                onClick={() => {
+                  const q = clone(p);
+                  q.work.splice(i, 1);
+                  q.reminders.forEach((r) => {
+                    if (r.basis_work_ref === w.ref) r.basis_work_ref = null;
+                  });
+                  change(q);
+                  setCapture((c) => {
+                    const next = clone(c);
+                    delete next.workshops_by_work_ref?.[w.ref];
+                    return next;
+                  });
+                  setLinks((c) => {
+                    const next = { ...c };
+                    delete next[w.ref];
+                    return next;
+                  });
+                }}
+              >
+                Arbeit aus Entwurf entfernen
+              </Btn>
+            </div>
+            <WorkFields
+              value={w}
+              onChange={(next) => {
+                const q = clone(p);
+                q.work[i] = next;
+                change(q);
+                if (next.performed_by === "self" && w.performed_by !== "self")
+                  setCapture((c) => ({
+                    ...c,
+                    workshops_by_work_ref: {
+                      ...c.workshops_by_work_ref,
+                      [w.ref]: s.Settings[0].self_workshop_id ?? null,
+                    },
+                  }));
+              }}
+            />
             <div className="form-grid">
-              <Field label="Titel">
-                <input
-                  value={w.title}
+              <Field label="Ausgaben aus diesem Entwurf verknüpfen">
+                <select
+                  multiple
+                  value={w.expense_refs}
                   onChange={(x) => {
                     const q = clone(p);
-                    q.work[i].title = x.target.value;
+                    q.work[i].expense_refs = Array.from(
+                      x.target.selectedOptions,
+                      (o) => o.value,
+                    );
                     change(q);
                   }}
-                />
-              </Field>
-              <Field label="Datum der Arbeit">
-                <input
-                  type="date"
-                  value={w.date ?? ""}
-                  onChange={(x) => {
-                    const q = clone(p);
-                    q.work[i].date = x.target.value || null;
-                    change(q);
-                  }}
-                />
+                >
+                  {p.expenses.map((e) => (
+                    <option key={e.ref} value={e.ref}>
+                      {e.title} · {money(e.amount_cents, e.currency)}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="Bereits bezahlte Ausgabe verknüpfen">
                 <select

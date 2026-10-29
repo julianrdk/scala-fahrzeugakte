@@ -22,6 +22,7 @@ const forbidden = [
   "CLERK_JWT_KEY",
   "RESEND_API_KEY",
   "TANKERKOENIG_API_KEY",
+  "AI_CREDENTIALS_KEY",
   "new Function(",
   'require("ajv/',
 ];

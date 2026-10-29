@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
+const AssistantSettings = lazy(() =>
+  import("./AssistantSettings").then((m) => ({ default: m.AssistantSettings })),
+);
 import { researchTemplates, totals } from "../shared/logic";
 import type { Meta, State, Table } from "../shared/types";
 import { categories } from "../shared/types";
@@ -50,6 +53,11 @@ export function SettingsView({
   };
   return (
     <>
+      <Suspense
+        fallback={<p role="status">KI-Einstellungen werden geladen …</p>}
+      >
+        <AssistantSettings adapter={adapter} />
+      </Suspense>
       <section className="panel">
         <h2>Konto und Speicher</h2>
         {adapter?.accountEmail && <p>Angemeldet als {adapter.accountEmail}</p>}

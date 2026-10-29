@@ -58,6 +58,46 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("Fahrzeugadapter, kleine Antworten und private Sitzungen", () => {
+  it.each(["message", "transcribe"])(
+    "verwirft verspätete KI-%s beim Fahrzeugwechsel",
+    async (action) => {
+      let finish!: (v: Response) => void;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url) => {
+          if (String(url).includes("/bootstrap")) return Response.json(boot());
+          if (String(url).includes("/assistant/"))
+            return new Promise<Response>((r) => (finish = r));
+          const v = snapshot();
+          v.state.Vehicles[0].id = "vehicle-2";
+          return Response.json(v);
+        }),
+      );
+      const a = new CloudflareAdapter(
+        config,
+        "user_a",
+        async () => "SYNTHETIC",
+      );
+      await a.bootstrap();
+      const pending =
+        action === "message"
+          ? a.aiMessage({ messages: [{ role: "user", content: "Test" }] })
+          : a.aiTranscribe(
+              new Blob(["synthetic audio"], { type: "audio/webm" }),
+            );
+      await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+      await a.selectVehicle("vehicle-2");
+      finish(
+        Response.json({
+          message: "Alte Antwort",
+          draft: null,
+          warnings: [],
+          text: "Altes Diktat",
+        }),
+      );
+      await expect(pending).rejects.toThrow(/gewechselt/);
+    },
+  );
   it("wechselt von einem oft bearbeiteten zu einem neuen Fahrzeug mit eigener Revision", async () => {
     const b = boot();
     b.view.revision = 80;

@@ -17,7 +17,7 @@ const host = /^pk_(live|test)_/.test(key)
   : "clerk.jurodak.com";
 fs.writeFileSync(
   "public/_headers",
-  "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: camera=(), microphone=(), geolocation=(self)\n  Content-Security-Policy: " +
+  "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: camera=(), microphone=(self), geolocation=(self)\n  Content-Security-Policy: " +
     csp(host) +
     "\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n/ocr/*\n  Cache-Control: public, max-age=86400\n/config.json\n  Cache-Control: no-store\n",
 );

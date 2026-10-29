@@ -8,13 +8,21 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   Plus,
   Printer,
   Settings2,
   TriangleAlert,
   Wrench,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { emptyState, validatePackage } from "../shared/logic";
 import type {
   CaptureMetadata,
@@ -43,6 +51,11 @@ import { PhotoProvider } from "./PhotoSession";
 import { PrintView } from "./PrintView";
 import { SettingsView } from "./SettingsView";
 import { VehicleSetup } from "./VehicleSetup";
+import type { AssistantDraft, AssistantSeed } from "../shared/assistant";
+import "./assistant.css";
+const Assistant = lazy(() =>
+  import("./Assistant").then((m) => ({ default: m.Assistant })),
+);
 import { Btn, Empty, today, type Runner } from "./view-support";
 const Capture = lazy(() =>
   import("./views/Capture").then((m) => ({ default: m.Capture })),
@@ -98,8 +111,53 @@ function VehicleApp({
   const [previewCapture, setPreviewCapture] = useState<
       CaptureMetadata | undefined
     >(),
+    [previewLinks, setPreviewLinks] = useState<
+      Record<string, string[]> | undefined
+    >(),
     dirty = useRef(false),
+    aiDirty = useRef(false),
+    assistantContext = useRef<(() => AssistantSeed) | null>(null),
+    assistantBaseline = useRef<string | null>(null),
     routeRequest = useRef(0);
+  const [aiLoaded, setAiLoaded] = useState(false),
+    [aiOpen, setAiOpen] = useState(false),
+    [aiSeed, setAiSeed] = useState<AssistantSeed | null>(null),
+    [aiReset, setAiReset] = useState(0),
+    [previewEpoch, setPreviewEpoch] = useState(0);
+  const openAssistant = (seed?: AssistantSeed) => {
+    const explicit = !!seed;
+    try {
+      seed ??= assistantContext.current?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Formular bitte prüfen.");
+      return;
+    }
+    if (
+      !explicit &&
+      seed &&
+      aiLoaded &&
+      JSON.stringify(seed) === assistantBaseline.current
+    )
+      seed = undefined;
+    if (
+      seed &&
+      aiDirty.current &&
+      !confirm("Aktuellen KI-Entwurf durch die Formularangaben ersetzen?")
+    )
+      return;
+    if (seed) {
+      assistantBaseline.current = JSON.stringify(seed);
+      setAiSeed(seed);
+    }
+    setAiLoaded(true);
+    setAiOpen(true);
+  };
+  const registerAssistantContext = useCallback(
+    (factory: (() => AssistantSeed) | null) => {
+      assistantContext.current = factory;
+    },
+    [],
+  );
   const [needsLogin, setNeedsLogin] = useState(false),
     [accountEpoch] = useState(0),
     [config] = useState<Config | null>(external?.config ?? null),
@@ -229,7 +287,7 @@ function VehicleApp({
     };
   } catch {}
   const discard = () =>
-    !dirty.current ||
+    (!dirty.current && !aiDirty.current) ||
     confirm("Ungespeicherte Eingaben verwerfen und Fahrzeug wechseln?");
   const changeVehicle = async (id: string) => {
     if (!discard()) return;
@@ -263,8 +321,14 @@ function VehicleApp({
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } else download(bytes, d.source_filename ?? d.title, f.mime);
   }
-  const startPreview = (p: ImportPackage, capture?: CaptureMetadata) => {
+  const startPreview = (
+    p: ImportPackage,
+    capture?: CaptureMetadata,
+    links?: Record<string, string[]>,
+  ) => {
+    setPreviewEpoch((n) => n + 1);
     setPreviewCapture(capture);
+    setPreviewLinks(links);
     setPreview(validatePackage(p));
     dirty.current = true;
     location.hash = "/erfassen";
@@ -532,9 +596,10 @@ function VehicleApp({
                 !vehicle.archived &&
                 (preview ? (
                   <ImportPreview
-                    key={preview.import_id ?? "preview"}
+                    key={previewEpoch}
                     initial={preview}
                     initialCapture={previewCapture}
+                    initialLinks={previewLinks}
                     captureSupported={
                       adapter.kind === "test" || status.features?.capture === 1
                     }
@@ -545,18 +610,25 @@ function VehicleApp({
                     onDone={async (reused) => {
                       await refresh();
                       setPreview(null);
+                      dirty.current = false;
+                      setAiReset((n) => n + 1);
+                      assistantBaseline.current = null;
                       setNotice(
                         reused
                           ? "Dieses Paket war bereits gespeichert. Vorhandene Einträge wurden geladen."
-                          : "Import bestätigt gespeichert.",
+                          : "Einträge bestätigt gespeichert.",
                       );
                       location.hash = "/historie";
                     }}
                     onBack={() => setPreview(null)}
                     setProgress={setProgress}
+                    onAssistant={openAssistant}
+                    onAssistantContext={registerAssistantContext}
                   />
                 ) : (
                   <Capture
+                    onAssistant={openAssistant}
+                    onAssistantContext={registerAssistantContext}
                     s={s}
                     adapter={adapter}
                     onPreview={startPreview}
@@ -743,6 +815,46 @@ function VehicleApp({
             </main>
           </div>
         </div>
+        {!vehicle.archived && !needsLogin && (
+          <>
+            {!aiOpen && (
+              <button
+                type="button"
+                className="ai-launcher no-print"
+                aria-label="KI-Assistent öffnen"
+                title="Assistent"
+                disabled={busy}
+                onClick={() => openAssistant()}
+              >
+                <MessageCircle size={25} />
+              </button>
+            )}
+            {aiLoaded && (
+              <Suspense fallback={null}>
+                <Assistant
+                  adapter={adapter}
+                  open={aiOpen}
+                  seed={aiSeed}
+                  reset={aiReset}
+                  route={path}
+                  vehicleLabel={vehicleName(vehicle)}
+                  workshops={s.Settings[0].workshops}
+                  onClose={() => setAiOpen(false)}
+                  onPreview={(draft: AssistantDraft, links) => {
+                    assistantBaseline.current = JSON.stringify({
+                      draft,
+                      links: links ?? {},
+                    });
+                    startPreview(draft.package, draft.capture, links);
+                  }}
+                  onDirty={(value) => {
+                    aiDirty.current = value;
+                  }}
+                />
+              </Suspense>
+            )}
+          </>
+        )}
         <div className="print-tools no-print">
           <span>Drucken:</span>
           <select

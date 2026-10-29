@@ -16,10 +16,15 @@ const ajv = new Ajv({
 schema.$id = "vehicle-record-import-v1";
 ajv.addSchema(schema);
 ajv.addSchema(stored);
+const assistant = JSON.parse(
+  fs.readFileSync("shared/assistant.schema.json", "utf8"),
+);
+ajv.addSchema(assistant);
 fs.mkdirSync("shared/generated", { recursive: true });
 let code = standalone(ajv, {
   validateImport: schema.$id,
   validateStored: stored.$id,
+  validateAssistant: assistant.$id,
 });
 code = code.replaceAll(
   'require("ajv/dist/runtime/ucs2length").default',
@@ -33,5 +38,5 @@ code =
 fs.writeFileSync("shared/generated/validators.js", code);
 fs.writeFileSync(
   "shared/generated/validators.d.ts",
-  "import type {ValidateFunction} from 'ajv';\nexport const validateImport:ValidateFunction;\nexport const validateStored:ValidateFunction;\n",
+  "import type {ValidateFunction} from 'ajv';\nexport const validateImport:ValidateFunction;\nexport const validateStored:ValidateFunction;\nexport const validateAssistant:ValidateFunction;\n",
 );

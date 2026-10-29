@@ -35,11 +35,13 @@ export function PositionEditor({
   prices,
   onChange,
   disabled = false,
+  showPrices = true,
 }: {
   parts: Part[];
   prices: PositionPrice[];
   onChange: (parts: Part[], prices: PositionPrice[]) => void;
   disabled?: boolean;
+  showPrices?: boolean;
 }) {
   const filled = parts.map((_, i) => prices[i] ?? emptyPrice());
   function part(index: number, key: keyof Part, value: string) {
@@ -74,11 +76,15 @@ export function PositionEditor({
   }
   return (
     <fieldset className="position-editor" disabled={disabled}>
-      <legend>Rechnungspositionen</legend>
-      <p className="muted">
-        Einzelpreise sind Zusatzangaben. Die Kostenübersicht verwendet
-        ausschließlich den Rechnungsbetrag.
-      </p>
+      <legend>
+        {showPrices ? "Rechnungspositionen" : "Teile und Material"}
+      </legend>
+      {showPrices && (
+        <p className="muted">
+          Einzelpreise sind Zusatzangaben. Die Kostenübersicht verwendet
+          ausschließlich den Rechnungsbetrag.
+        </p>
+      )}
       {parts.map((row, i) => (
         <div className="position-row" key={i}>
           <div className="position-heading">
@@ -129,26 +135,30 @@ export function PositionEditor({
                 onChange={(e) => part(i, "part_number", e.target.value)}
               />
             </Field>
-            <DecimalField
-              label="Einzelpreis"
-              value={filled[i].unit_price?.replace(".", ",") ?? ""}
-              onCommit={(value) => price(i, "unit_price", value)}
-            />
-            <DecimalField
-              label="Positionsbetrag"
-              value={moneyText(filled[i].total_cents)}
-              onCommit={(value) => price(i, "total_cents", value)}
-            />
-            <Field label="Preisbasis">
-              <select
-                value={filled[i].basis}
-                onChange={(e) => price(i, "basis", e.target.value)}
-              >
-                <option value="unknown">Noch unklar</option>
-                <option value="net">Netto</option>
-                <option value="gross">Brutto</option>
-              </select>
-            </Field>
+            {showPrices && (
+              <>
+                <DecimalField
+                  label="Einzelpreis"
+                  value={filled[i].unit_price?.replace(".", ",") ?? ""}
+                  onCommit={(value) => price(i, "unit_price", value)}
+                />
+                <DecimalField
+                  label="Positionsbetrag"
+                  value={moneyText(filled[i].total_cents)}
+                  onCommit={(value) => price(i, "total_cents", value)}
+                />
+                <Field label="Preisbasis">
+                  <select
+                    value={filled[i].basis}
+                    onChange={(e) => price(i, "basis", e.target.value)}
+                  >
+                    <option value="unknown">Noch unklar</option>
+                    <option value="net">Netto</option>
+                    <option value="gross">Brutto</option>
+                  </select>
+                </Field>
+              </>
+            )}
           </div>
           <Field label="Bestätigte Freigabe / Spezifikation">
             <input
@@ -172,7 +182,7 @@ export function PositionEditor({
     </fieldset>
   );
 }
-function DecimalField({
+export function DecimalField({
   label,
   value,
   onCommit,

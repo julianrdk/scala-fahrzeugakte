@@ -63,7 +63,11 @@ async function seed(input) {
   if (!r.ok) throw Error(await r.text());
   return r.json();
 }
-for (const file of ["auth/data-schema.sql", "auth/migrations/0003-fleet.sql"])
+for (const file of [
+  "auth/data-schema.sql",
+  "auth/migrations/0003-fleet.sql",
+  "auth/migrations/0004-ai.sql",
+])
   await seed({ schema: statements(fs.readFileSync(file, "utf8")) });
 await seed({ expenses: 123 });
 function token(owner) {

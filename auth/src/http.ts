@@ -1,13 +1,15 @@
 import { problem } from "./v2/types";
-export async function jsonBody(request: Request) {
+export async function jsonBody(request: Request, limit?: number) {
   if (
     request.headers.get("Content-Type")?.split(";")[0].trim() !==
     "application/json"
   )
     problem(415, "JSON-Anfrage erforderlich.");
-  const max = new URL(request.url).pathname.endsWith("/restoreStart")
-    ? 16 * 1024 * 1024
-    : 1024 * 1024;
+  const max =
+    limit ??
+    (new URL(request.url).pathname.endsWith("/restoreStart")
+      ? 16 * 1024 * 1024
+      : 1024 * 1024);
   let size = 0;
   const chunks: Uint8Array[] = [],
     reader = request.body?.getReader();

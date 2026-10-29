@@ -25,6 +25,11 @@ import {
   clearThumbnailCache,
   makeThumbnail,
 } from "./thumbnail";
+import type {
+  AIProfile,
+  AssistantReply,
+  AssistantRequest,
+} from "../shared/assistant";
 import { clearTimings, timed } from "./timings";
 export class ServiceError extends Error {
   constructor(
@@ -61,6 +66,57 @@ export class CloudflareAdapter implements Adapter {
   ) {}
   resume() {
     this.closed = false;
+  }
+  aiProfile(
+    action?: "save" | "test" | "remove",
+    key?: string,
+    signal?: AbortSignal,
+  ): Promise<AIProfile> {
+    return this.json(
+      "/v3/ai/profile",
+      action
+        ? {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, ...(key ? { key } : {}) }),
+            signal,
+          }
+        : { signal },
+    );
+  }
+  async aiMessage(
+    input: AssistantRequest,
+    signal?: AbortSignal,
+  ): Promise<AssistantReply> {
+    const generation = this.vehicleEpoch,
+      id = this.vehicleId;
+    if (!id) throw Error("Bitte zuerst ein Fahrzeug auswählen.");
+    const result = await this.json(
+      "/v3/vehicles/" + encodeURIComponent(id) + "/assistant/message",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        signal,
+      },
+    );
+    if (generation !== this.vehicleEpoch)
+      throw Error("Fahrzeug wurde gewechselt.");
+    return result;
+  }
+  async aiTranscribe(audio: Blob, signal?: AbortSignal): Promise<string> {
+    const generation = this.vehicleEpoch,
+      id = this.vehicleId;
+    if (!id) throw Error("Bitte zuerst ein Fahrzeug auswählen.");
+    const form = new FormData();
+    form.set("audio", audio, "aufnahme");
+    const result = await this.json(
+      "/v3/vehicles/" + encodeURIComponent(id) + "/assistant/transcribe",
+      { method: "POST", body: form, signal },
+    );
+    if (generation !== this.vehicleEpoch)
+      throw Error("Fahrzeug wurde gewechselt.");
+    return result.text;
   }
   dispose() {
     this.epoch++;

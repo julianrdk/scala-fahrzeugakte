@@ -39,6 +39,7 @@ export interface V2Env {
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
   AUTOMATION_ENABLED?: string;
+  AI_CREDENTIALS_KEY?: string;
 }
 export type Account = {
   owner: string;

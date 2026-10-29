@@ -1,0 +1,228 @@
+.ai-launcher {
+  position: fixed;
+  right: 24px;
+  bottom: 88px;
+  z-index: 800;
+  width: 56px;
+  height: 56px;
+  border: 1px solid #ffffff45;
+  border-radius: 50%;
+  background: #174f42;
+  color: white;
+  box-shadow: 0 8px 26px #123b3d38;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.ai-launcher:hover {
+  background: #216451;
+  transform: translateY(-1px);
+}
+.ai-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+.ai-backdrop {
+  position: absolute;
+  inset: 0;
+  background: #142b2945;
+}
+.ai-panel {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  bottom: 16px;
+  width: min(460px, calc(100% - 32px));
+  background: #fffefb;
+  border: 1px solid #d8e1dc;
+  border-radius: 20px;
+  box-shadow: 0 18px 70px #132c3940;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #243c35;
+}
+.ai-panel header {
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #dbe4df;
+  background: #f3f7f2;
+}
+.ai-panel h2 {
+  font-size: 1.2rem;
+  margin: 0;
+}
+.ai-panel h3 {
+  font-size: 1rem;
+  margin: 0 0 10px;
+}
+.ai-panel small {
+  color: #5a6c63;
+}
+.ai-content {
+  padding: 18px 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  flex: 1;
+  min-height: 0;
+}
+.ai-content p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ai-suggestions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.ai-suggestions .button {
+  justify-content: flex-start;
+  text-align: left;
+}
+.ai-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai-message {
+  border-radius: 14px;
+  padding: 10px 13px;
+  max-width: 95%;
+  border: 1px solid #e0e7e0;
+  background: #f8faf7;
+}
+.ai-message.user {
+  background: #e5efe8;
+  align-self: flex-end;
+}
+.ai-message p {
+  margin: 4px 0;
+  line-height: 1.55;
+}
+.ai-draft {
+  padding: 15px;
+  border-radius: 14px;
+  background: #eef4ec;
+  border: 1px solid #cfddce;
+  margin-top: 18px;
+}
+.ai-draft p {
+  margin: 6px 0 10px;
+}
+.ai-composer {
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid #dbe4df;
+  background: #fffefb;
+}
+.ai-composer label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.ai-composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 78px;
+  max-height: 180px;
+}
+.ai-compose-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 9px 0;
+}
+.ai-composer small {
+  font-size: 0.72rem;
+  display: block;
+  line-height: 1.45;
+}
+.ai-voice {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ai-voice span {
+  font-size: 0.75rem;
+}
+.ai-error {
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff1ed;
+  color: #812f26;
+}
+.ai-settings-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ai-settings-heading h2 {
+  margin-right: auto;
+}
+.ai-help {
+  padding: 16px;
+  background: #f1f5ef;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.ai-help li {
+  padding: 5px 0;
+}
+.ai-settings small {
+  display: block;
+  margin-top: 10px;
+}
+.ai-conflicts {
+  margin: 14px 0;
+}
+.ai-conflicts > div {
+  padding: 10px;
+  background: #fffdf5;
+  border: 1px solid #e9debc;
+  margin-bottom: 8px;
+  border-radius: 8px;
+}
+.ai-conflicts small {
+  display: block;
+  overflow-wrap: anywhere;
+  margin: 5px 0;
+}
+@media (max-width: 700px) {
+  .ai-launcher {
+    right: 16px;
+    bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+  .ai-panel {
+    inset: 0;
+    width: 100%;
+    border-radius: 0;
+    border: 0;
+    height: 100dvh;
+  }
+  .ai-panel header,
+  .ai-content {
+    padding: 14px 16px;
+  }
+  .ai-composer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .ai-composer textarea {
+    max-height: 120px;
+  }
+  .ai-message {
+    max-width: 100%;
+  }
+}
+@media print {
+  .ai-layer,
+  .ai-launcher {
+    display: none !important;
+  }
+}

@@ -6,6 +6,13 @@ import { createAccount } from "../auth/src/v2/store";
 import { putObject } from "../auth/src/v2/files";
 import service from "../auth/src/worker";
 import { hashBytes, meta } from "../shared/logic";
+import {
+  assistantMessage,
+  assistantTranscribe,
+  changeAIProfile,
+} from "../auth/src/ai";
+import { AI_AUDIO_MODEL, AI_TEXT_MODEL } from "../shared/assistant";
+import { aiProposal } from "./ai-fixture";
 export default {
   async fetch(
     request: Request,
@@ -45,6 +52,87 @@ export default {
       }
       const a = (await fleetAccount(env, "user_a"))!,
         v = (await vehicles(env, a))[0];
+      if (input.assistant) {
+        const at = performance.now(),
+          key = "gsk_SYNTHETIC_workerd_abcdefgh1234";
+        const profile = await changeAIProfile(
+          env,
+          a.owner,
+          new Request("https://car.jurodak.com/api/v3/ai/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "save", key }),
+          }),
+          async () =>
+            Response.json({
+              data: [{ id: AI_TEXT_MODEL }, { id: AI_AUDIO_MODEL }],
+            }),
+        );
+        const reply = await assistantMessage(
+          env,
+          a,
+          v.id,
+          new Request(
+            "https://car.jurodak.com/api/v3/vehicles/" +
+              v.id +
+              "/assistant/message",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: [
+                  {
+                    role: "user",
+                    content:
+                      "Ölwechsel gestern bei 82.400 km, Material 65 Euro",
+                  },
+                ],
+              }),
+            },
+          ),
+          async () =>
+            Response.json({
+              choices: [
+                {
+                  finish_reason: "stop",
+                  message: { content: JSON.stringify(aiProposal()) },
+                },
+              ],
+            }),
+        );
+        const audio = new FormData();
+        audio.set(
+          "audio",
+          new Blob(
+            [new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0, 0, 0, 0, 0])],
+            { type: "audio/webm" },
+          ),
+          "aufnahme.webm",
+        );
+        const transcript = await assistantTranscribe(
+          env,
+          a,
+          v.id,
+          new Request(
+            "https://car.jurodak.com/api/v3/vehicles/" +
+              v.id +
+              "/assistant/transcribe",
+            { method: "POST", body: audio },
+          ),
+          async () => Response.json({ text: "Synthetisches Diktat" }),
+        );
+        const row = await db
+          .prepare("SELECT ciphertext FROM ai_credentials WHERE owner=?")
+          .bind(a.owner)
+          .first<{ ciphertext: string }>();
+        return Response.json({
+          profile,
+          reply,
+          transcript,
+          encrypted: !!row && !row.ciphertext.includes(key),
+          wallMs: performance.now() - at,
+        });
+      }
       const original = new TextEncoder().encode(
           "%PDF-1.4\nSYNTHETIC BENCHMARK",
         ),

@@ -1,5 +1,9 @@
 import { execFileSync } from "node:child_process";
-for (const file of ["auth/data-schema.sql", "auth/migrations/0003-fleet.sql"])
+for (const file of [
+  "auth/data-schema.sql",
+  "auth/migrations/0003-fleet.sql",
+  "auth/migrations/0004-ai.sql",
+])
   execFileSync(
     process.execPath,
     [
