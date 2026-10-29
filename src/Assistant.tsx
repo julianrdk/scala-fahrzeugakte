@@ -211,7 +211,7 @@ export function Assistant({
       if (e.key === "Tab") {
         const nodes = Array.from(
             pane.current?.querySelectorAll<HTMLElement>(
-              "button:not([disabled]),a[href],textarea:not([disabled]),input:not([disabled])",
+              "button:not([disabled]),a[href],textarea:not([disabled]),input:not([disabled]),audio[controls]",
             ) ?? [],
           ).filter((el) => el.offsetParent !== null),
           first = nodes[0],

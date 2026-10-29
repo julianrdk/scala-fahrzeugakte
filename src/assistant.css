@@ -151,6 +151,34 @@
 .ai-voice span {
   font-size: 0.75rem;
 }
+.ai-mic-level {
+  display: grid;
+  gap: 3px;
+  max-width: 160px;
+  overflow-wrap: anywhere;
+}
+.ai-mic-level meter {
+  width: 100%;
+  height: 14px;
+}
+.ai-audio-preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+.ai-audio-preview audio {
+  width: 240px;
+  max-width: 100%;
+  height: 36px;
+}
+.ai-compose-actions:has(.ai-audio-preview) {
+  flex-wrap: wrap;
+}
+.ai-compose-actions:has(.ai-audio-preview) > .ai-voice {
+  flex: 1 1 100%;
+}
 .ai-error {
   padding: 12px;
   border-radius: 8px;

@@ -19,7 +19,7 @@ import {
   validateAssistantRequest,
 } from "../shared/assistant";
 import { blankPackage, clone, totals } from "../shared/logic";
-import { aiProposal } from "./ai-fixture";
+import { aiProposal, aiTranscript } from "./ai-fixture";
 import { setupFleet } from "./fleet-fixture";
 import { request } from "./fixtures";
 let c: Awaited<ReturnType<typeof setupFleet>>;
@@ -74,7 +74,7 @@ async function message(
 async function audio(
   blob: Blob,
   fetcher: typeof fetch = vi.fn(async () =>
-    Response.json({ text: " Ölwechsel bei 82.400 km " }),
+    Response.json(aiTranscript(" Ölwechsel bei 82.400 km ")),
   ),
   id = c.a1,
   owner = "user_a",
@@ -553,7 +553,9 @@ describe("Audio und Entwurfsprüfung", () => {
         const form = init?.body as FormData;
         expect(form.get("model")).toBe(AI_AUDIO_MODEL);
         expect(form.get("language")).toBe("de");
-        return Response.json({ text: " Ölwechsel bei 82.400 km " });
+        expect(form.get("response_format")).toBe("verbose_json");
+        expect(form.get("temperature")).toBe("0");
+        return Response.json(aiTranscript(" Ölwechsel bei 82.400 km "));
       });
     expect(await audio(webm(), f)).toEqual({ text: "Ölwechsel bei 82.400 km" });
     expect(c.objects.size).toBe(before);
@@ -562,6 +564,83 @@ describe("Audio und Entwurfsprüfung", () => {
         .prepare("SELECT COUNT(*) n FROM fleet_entities WHERE kind='Expenses'")
         .get()?.n,
     ).toBe(0);
+  });
+  it("erhält den gesprochenen Satz einschließlich Kilometer, Datum, Menge und Preis", async () => {
+    await save();
+    const text =
+      "Vorgestern habe ich bei 50.700 km drei Zündkerzen zu je 10,90 Euro gewechselt.";
+    expect(
+      await audio(
+        webm(),
+        vi.fn(async () => Response.json(aiTranscript(text))),
+      ),
+    ).toEqual({ text });
+  });
+  it("sperrt nicht pauschal die Wörter Vielen Dank, wenn die Erkennung verlässlich ist", async () => {
+    await save();
+    expect(
+      await audio(
+        webm(),
+        vi.fn(async () => Response.json(aiTranscript("Vielen Dank."))),
+      ),
+    ).toEqual({ text: "Vielen Dank." });
+  });
+  it.each([
+    { no_speech_prob: 0.98, avg_logprob: -0.8 },
+    { avg_logprob: -1.3 },
+    { compression_ratio: 3.2 },
+  ])("übernimmt keine unsichere Erkennung %j als Diktat", async (quality) => {
+    await save();
+    const transcript = aiTranscript("Vielen Dank.");
+    Object.assign(transcript.segments[0], quality);
+    const f = vi.fn(async () => Response.json(transcript));
+    await expect(audio(webm(), f)).rejects.toMatchObject({
+      status: 422,
+      code: "AI_TRANSCRIPT_UNCERTAIN",
+    });
+    expect(f).toHaveBeenCalledOnce();
+    expect(
+      c.sql
+        .prepare("SELECT COUNT(*) n FROM fleet_entities WHERE kind='Expenses'")
+        .get()?.n,
+    ).toBe(0);
+  });
+  it("verwirft eine Aufnahme mit unsicherem Teil vollständig statt Angaben still zu verlieren", async () => {
+    await save();
+    const transcript = aiTranscript("Zündkerzen gewechselt, vielen Dank.");
+    transcript.segments.push({
+      ...transcript.segments[0],
+      text: "Vielen Dank.",
+      no_speech_prob: 0.95,
+      avg_logprob: -0.8,
+    });
+    await expect(
+      audio(
+        webm(),
+        vi.fn(async () => Response.json(transcript)),
+      ),
+    ).rejects.toMatchObject({ code: "AI_TRANSCRIPT_UNCERTAIN" });
+  });
+  it.each([undefined, []])(
+    "erfordert Erkennungsmetadaten statt allein einer Textantwort: %j",
+    async (segments) => {
+      await save();
+      await expect(
+        audio(
+          webm(),
+          vi.fn(async () => Response.json({ text: "Vielen Dank.", segments })),
+        ),
+      ).rejects.toMatchObject({ code: "AI_TRANSCRIPT" });
+    },
+  );
+  it("weist eine leere Anbieterantwort verständlich ab", async () => {
+    await save();
+    await expect(
+      audio(
+        webm(),
+        vi.fn(async () => Response.json(null)),
+      ),
+    ).rejects.toMatchObject({ status: 422, code: "AI_TRANSCRIPT" });
   });
   it("weist zu große und falsch deklarierte Audioaufnahmen vor Anbieteraufruf ab", async () => {
     await save();

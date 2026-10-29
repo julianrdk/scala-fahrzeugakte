@@ -7,7 +7,10 @@ import { proposalToDraft } from "../../shared/assistant";
 const params = new URLSearchParams(location.search);
 if (params.has("mobile")) {
   const frame = document.createElement("iframe");
-  frame.src = "/tests/browser/index.html?ai" + location.hash;
+  frame.src =
+    "/tests/browser/index.html?ai" +
+    (params.has("voice") ? "&voice" : "") +
+    location.hash;
   frame.title = "Mobile Fahrzeugakte";
   frame.style.cssText =
     "width:390px;height:844px;border:1px solid #aaa;border-radius:16px;display:block;margin:20px auto";
@@ -57,6 +60,34 @@ if (params.has("mobile")) {
       adapter.aiTranscribe = async () =>
         "Gestern selbst Öl und Filter gewechselt, bei 82.400 km, Material 65 Euro";
     }
+    if (params.has("voice")) {
+      // Explicit local UI fixture: a generated tone, no real microphone access.
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          getUserMedia: async () => {
+            const context = new AudioContext(),
+              tone = context.createOscillator(),
+              gain = context.createGain(),
+              destination = context.createMediaStreamDestination();
+            gain.gain.value = 0.06;
+            tone.connect(gain).connect(destination);
+            tone.start();
+            await context.resume();
+            const track = destination.stream.getAudioTracks()[0],
+              stop = track.stop.bind(track);
+            track.stop = () => {
+              stop();
+              if (context.state !== "closed") {
+                tone.stop();
+                void context.close();
+              }
+            };
+            return destination.stream;
+          },
+        },
+      });
+    }
     createRoot(document.getElementById("root")!).render(
       <>
         <p
@@ -72,6 +103,7 @@ if (params.has("mobile")) {
           {params.has("ai")
             ? " · KI-Antworten simuliert · keine Groq-Aufrufe"
             : ""}
+          {params.has("voice") ? " · Mikrofon durch Testton ersetzt" : ""}
         </p>
         <App
           external={{

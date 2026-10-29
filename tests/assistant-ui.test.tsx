@@ -38,6 +38,31 @@ class FakeRecorder {
     this.onstop?.();
   }
 }
+function microphone(signal = 0.03, running = true) {
+  const input = { signal },
+    disconnect = vi.fn(),
+    close = vi.fn(async () => {});
+  class Audio {
+    state = running ? "running" : "suspended";
+    resume = vi.fn(async () => {});
+    close = close;
+    createMediaStreamSource() {
+      return { connect: vi.fn(), disconnect };
+    }
+    createAnalyser() {
+      return {
+        fftSize: 2048,
+        disconnect,
+        getFloatTimeDomainData(values: Float32Array) {
+          for (let i = 0; i < values.length; i++)
+            values[i] = i % 2 ? input.signal : -input.signal;
+        },
+      };
+    }
+  }
+  vi.stubGlobal("AudioContext", Audio);
+  return { input, close, disconnect };
+}
 const button = (label: string) => {
   const b = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(
     (b) =>
@@ -78,7 +103,7 @@ beforeEach(() => {
     configurable: true,
     value: {
       getUserMedia: vi.fn(async () => {
-        const track = { stop: vi.fn() };
+        const track = { stop: vi.fn(), kind: "audio", label: "Testmikrofon" };
         tracks.push(track);
         return { getTracks: () => [track] };
       }),
@@ -362,6 +387,114 @@ describe("Formularübergabe und vorhandene Speicherregeln", () => {
 });
 
 describe("Mikrofon und Lebenszyklus", () => {
+  it("zeigt das tatsächliche Mikrofon und den lokal gemessenen Pegel", async () => {
+    vi.useFakeTimers();
+    const p = props(),
+      m = microphone();
+    await act(async () => root.render(<VoiceInput {...p} />));
+    await click("Diktieren");
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(host.textContent).toContain("Testmikrofon");
+    expect(host.querySelector("meter")!.value).toBeGreaterThan(0);
+    await click("Aufnahme verwerfen");
+    expect(m.close).toHaveBeenCalledOnce();
+    expect(p.onAudio).not.toHaveBeenCalled();
+  });
+  it("sendet eine gemessene stille Aufnahme nicht an die Spracherkennung und erlaubt Anhören", async () => {
+    vi.useFakeTimers();
+    microphone(0);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:synthetic-dictation",
+    );
+    const p = props();
+    await act(async () => root.render(<VoiceInput {...p} />));
+    await click("Diktieren");
+    await act(async () => vi.advanceTimersByTimeAsync(3200));
+    expect(host.textContent).toContain("sehr leise");
+    await click("Transkribieren");
+    expect(p.onAudio).not.toHaveBeenCalled();
+    expect(p.onError).toHaveBeenLastCalledWith(
+      expect.stringContaining("kein hörbares Mikrofonsignal"),
+    );
+    expect(host.querySelector("audio")?.src).toBe("blob:synthetic-dictation");
+    expect(tracks[0].stop).toHaveBeenCalled();
+  });
+  it("erhält hörbare Aufnahmen auch bei einer Pause vor dem Stoppen", async () => {
+    vi.useFakeTimers();
+    const p = props(),
+      m = microphone(0.02);
+    await act(async () => root.render(<VoiceInput {...p} />));
+    await click("Diktieren");
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    m.input.signal = 0;
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    await click("Transkribieren");
+    expect(p.onAudio).toHaveBeenCalledOnce();
+    expect(m.close).toHaveBeenCalledOnce();
+  });
+  it("verwirft leise Aufnahmen nicht allein wegen eines niedrigen Pegels", async () => {
+    vi.useFakeTimers();
+    microphone(0.0005);
+    const p = props();
+    await act(async () => root.render(<VoiceInput {...p} />));
+    await click("Diktieren");
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    await click("Transkribieren");
+    expect(p.onAudio).toHaveBeenCalledOnce();
+  });
+  it("verhindert keine Aufnahme, wenn der Browser die Pegelmessung nicht starten kann", async () => {
+    vi.useFakeTimers();
+    const p = props(),
+      m = microphone(0, false);
+    await act(async () => root.render(<VoiceInput {...p} />));
+    await click("Diktieren");
+    await act(async () => vi.advanceTimersByTimeAsync(3200));
+    expect(host.textContent).toContain("Pegelanzeige nicht verfügbar");
+    await click("Transkribieren");
+    expect(p.onAudio).toHaveBeenCalledOnce();
+    expect(m.close).toHaveBeenCalledOnce();
+  });
+  it("gibt die lokale Audiovorschau beim Entfernen, einer neuen Aufnahme und Schließen frei", async () => {
+    vi.spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:dictation-1")
+      .mockReturnValueOnce("blob:dictation-2")
+      .mockReturnValueOnce("blob:dictation-3");
+    const revoke = vi
+        .spyOn(URL, "revokeObjectURL")
+        .mockImplementation(() => {}),
+      p = props();
+    await act(async () => root.render(<VoiceInput {...p} />));
+    await click("Diktieren");
+    await click("Transkribieren");
+    await click("Audioaufnahme entfernen");
+    expect(revoke).toHaveBeenCalledWith("blob:dictation-1");
+    expect(host.querySelector("audio")).toBeNull();
+    await click("Diktieren");
+    await click("Transkribieren");
+    await click("Diktieren");
+    expect(revoke).toHaveBeenCalledWith("blob:dictation-2");
+    await click("Transkribieren");
+    await act(async () => root.render(<div />));
+    expect(revoke).toHaveBeenCalledWith("blob:dictation-3");
+  });
+  it("beendet die Mikrofonspur nach dem letzten Audiopaket", async () => {
+    const p = props();
+    vi.spyOn(FakeRecorder.prototype, "stop").mockImplementation(function (
+      this: FakeRecorder,
+    ) {
+      this.state = "inactive";
+      expect(tracks[0].stop).not.toHaveBeenCalled();
+      this.ondataavailable?.({
+        data: new Blob(["last audio packet"], { type: "audio/webm" }),
+      });
+      this.onstop?.();
+    });
+    await act(async () => root.render(<VoiceInput {...p} />));
+    await click("Diktieren");
+    await click("Transkribieren");
+    expect(await p.onAudio.mock.calls[0][0].text()).toBe("last audio packet");
+    expect(tracks[0].stop).toHaveBeenCalled();
+  });
   it("verwirft die Aufnahme beim Verlassen der Seite", async () => {
     const p = props();
     await act(async () => root.render(<VoiceInput {...p} />));

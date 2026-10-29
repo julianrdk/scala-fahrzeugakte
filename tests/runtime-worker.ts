@@ -12,7 +12,7 @@ import {
   changeAIProfile,
 } from "../auth/src/ai";
 import { AI_AUDIO_MODEL, AI_TEXT_MODEL } from "../shared/assistant";
-import { aiProposal } from "./ai-fixture";
+import { aiProposal, aiTranscript } from "./ai-fixture";
 
 // Construct outbound requests with workerd's native API before returning fixtures.
 // Plain fetch mocks miss options that Node accepts but Cloudflare rejects.
@@ -32,7 +32,7 @@ const aiProvider: typeof fetch = async (url, init) => {
       ],
     });
   if (request.url === "https://api.groq.com/openai/v1/audio/transcriptions")
-    return Response.json({ text: "Synthetisches Diktat" });
+    return Response.json(aiTranscript("Synthetisches Diktat"));
   throw Error("Unbekannter synthetischer Anbieterpfad.");
 };
 export default {

@@ -29,3 +29,19 @@ export function aiProposal(): AssistantProposal {
     ],
   };
 }
+export function aiTranscript(text = "Ölwechsel bei 82.400 km") {
+  return {
+    text,
+    duration: 8,
+    segments: [
+      {
+        text,
+        start: 0,
+        end: 8,
+        avg_logprob: -0.15,
+        no_speech_prob: 0.01,
+        compression_ratio: 1.2,
+      },
+    ],
+  };
+}

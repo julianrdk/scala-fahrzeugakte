@@ -580,7 +580,8 @@ export async function assistantTranscribe(
     );
     payload.set("model", AI_AUDIO_MODEL);
     payload.set("language", "de");
-    payload.set("response_format", "json");
+    payload.set("response_format", "verbose_json");
+    payload.set("temperature", "0");
     const result = await provider(
       "audio/transcriptions",
       key,
@@ -603,14 +604,43 @@ export async function assistantTranscribe(
         "AI_CANCELLED",
       );
     if (
+      !result ||
       typeof result.text !== "string" ||
       !result.text.trim() ||
-      result.text.length > 4000
+      result.text.length > 4000 ||
+      !Array.isArray(result.segments) ||
+      !result.segments.length
     )
       problem(
         422,
-        "Keine kurze verständliche Sprache erkannt. Bitte den Text selbst eingeben.",
+        "Keine verständliche Sprache erkannt. Bitte die Aufnahme anhören, das Mikrofon prüfen und erneut diktieren.",
         "AI_TRANSCRIPT",
+      );
+    // Confidence is a heuristic, not proof that the returned words were spoken.
+    // Reject uncertain recordings as a whole rather than silently dropping details.
+    if (
+      result.segments.some(
+        (segment: Record<string, unknown> | null) =>
+          !segment ||
+          typeof segment.text !== "string" ||
+          typeof segment.avg_logprob !== "number" ||
+          !Number.isFinite(segment.avg_logprob) ||
+          typeof segment.no_speech_prob !== "number" ||
+          !Number.isFinite(segment.no_speech_prob) ||
+          segment.no_speech_prob < 0 ||
+          segment.no_speech_prob > 1 ||
+          typeof segment.compression_ratio !== "number" ||
+          !Number.isFinite(segment.compression_ratio) ||
+          segment.compression_ratio < 0 ||
+          segment.avg_logprob < -1 ||
+          (segment.no_speech_prob > 0.6 && segment.avg_logprob < -0.5) ||
+          segment.compression_ratio > 2.4,
+      )
+    )
+      problem(
+        422,
+        "Die Aufnahme wurde nicht zuverlässig verstanden. Bitte die Aufnahme anhören und erneut diktieren oder den Text selbst eingeben.",
+        "AI_TRANSCRIPT_UNCERTAIN",
       );
     return { text: result.text.trim() };
   } finally {
