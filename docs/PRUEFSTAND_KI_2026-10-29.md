@@ -46,3 +46,13 @@ Der Nutzer hat die Groq-Einrichtung und das Hinterlegen von `AI_CREDENTIALS_KEY`
 - Produktive Cloudflare-CPU-Zeit einschließlich erster und warmer Aufrufe. Der kostenlose CPU-Rahmen kann aus lokalen Wandzeiten nicht bestätigt werden. Nach Einrichtung über Worker-Metriken prüfen; keine automatische Tarifaufwertung.
 
 Die [Einrichtungsanleitung](KI_ASSISTENT_EINRICHTEN.md) beschreibt Migration, Verschlüsselungssecret, Veröffentlichung und den anschließenden persönlichen Test.
+
+## Nachtrag: Verbindungsfehler bei der Schlüsselprüfung
+
+Die beim persönlichen Schlüsseltest gemeldete Nachricht „Der KI-Dienst antwortet gerade nicht“ ließ sich lokal in workerd reproduzieren. Ursache war `redirect: "error"`: Cloudflare lehnt diese Request-Option bereits beim Erstellen der Anfrage ab, bevor ein Aufruf an Groq erfolgt. Die bisherigen Anbieter-Fixtures umgingen die native Request-Erstellung und deckten diesen Unterschied zu Node.js nicht auf. [Cloudflare dokumentiert die Einschränkung](https://developers.cloudflare.com/workers/runtime-apis/request/).
+
+Die Verbindung verwendet jetzt `redirect: "manual"` und weist Weiterleitungen ausdrücklich ab. Persönliche Schlüssel werden damit nicht an ein Weiterleitungsziel geschickt. Netzwerkfehler, tatsächliche Zeitüberschreitungen und bewusster Abbruch erhalten getrennte Fehlercodes und verständliche Meldungen. Ein erfolgloser Ersatzversuch erhält den bisherigen Schlüssel.
+
+Die Laufzeit-Fixtures erstellen nun jede simulierte Anbieteranfrage mit workerds nativer Request-API. Dieser Test schlug vor der Korrektur mit derselben Meldung fehl und besteht anschließend für Schlüsselprüfung, Chat und Transkription. Zusätzlich sind die unterbundene Weiterleitung, der Erhalt des bisherigen Schlüssels und die Fehlerunterscheidung automatisiert geprüft. **251 Tests in 17 Dateien**, Typprüfung, vollständiger Produktionsbuild und Artefaktprüfung bestehen.
+
+Cloudflare wurde ausschließlich lesend geprüft: `AI_CREDENTIALS_KEY` ist inzwischen als verschlüsseltes Secret im bestehenden Worker vorhanden. Für diese Fehlerkorrektur wurden keine produktiven Einstellungen, Schlüssel oder Fahrzeugdaten geändert und keine echten Groq-Anfragen durchgeführt. Die Korrektur ist lokal vorbereitet; Commit und Push erfolgen weiterhin durch den Nutzer. Nach der automatischen Veröffentlichung muss der persönliche Schlüssel in der App erneut geprüft werden.

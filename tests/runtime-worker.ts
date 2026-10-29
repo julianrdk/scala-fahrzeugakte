@@ -13,6 +13,28 @@ import {
 } from "../auth/src/ai";
 import { AI_AUDIO_MODEL, AI_TEXT_MODEL } from "../shared/assistant";
 import { aiProposal } from "./ai-fixture";
+
+// Construct outbound requests with workerd's native API before returning fixtures.
+// Plain fetch mocks miss options that Node accepts but Cloudflare rejects.
+const aiProvider: typeof fetch = async (url, init) => {
+  const request = new Request(url, init);
+  if (request.url === "https://api.groq.com/openai/v1/models")
+    return Response.json({
+      data: [{ id: AI_TEXT_MODEL }, { id: AI_AUDIO_MODEL }],
+    });
+  if (request.url === "https://api.groq.com/openai/v1/chat/completions")
+    return Response.json({
+      choices: [
+        {
+          finish_reason: "stop",
+          message: { content: JSON.stringify(aiProposal()) },
+        },
+      ],
+    });
+  if (request.url === "https://api.groq.com/openai/v1/audio/transcriptions")
+    return Response.json({ text: "Synthetisches Diktat" });
+  throw Error("Unbekannter synthetischer Anbieterpfad.");
+};
 export default {
   async fetch(
     request: Request,
@@ -63,10 +85,7 @@ export default {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "save", key }),
           }),
-          async () =>
-            Response.json({
-              data: [{ id: AI_TEXT_MODEL }, { id: AI_AUDIO_MODEL }],
-            }),
+          aiProvider,
         );
         const reply = await assistantMessage(
           env,
@@ -90,15 +109,7 @@ export default {
               }),
             },
           ),
-          async () =>
-            Response.json({
-              choices: [
-                {
-                  finish_reason: "stop",
-                  message: { content: JSON.stringify(aiProposal()) },
-                },
-              ],
-            }),
+          aiProvider,
         );
         const audio = new FormData();
         audio.set(
@@ -119,7 +130,7 @@ export default {
               "/assistant/transcribe",
             { method: "POST", body: audio },
           ),
-          async () => Response.json({ text: "Synthetisches Diktat" }),
+          aiProvider,
         );
         const row = await db
           .prepare("SELECT ciphertext FROM ai_credentials WHERE owner=?")

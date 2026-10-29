@@ -146,6 +146,55 @@ describe("Persönlicher Schlüssel", () => {
       JSON.stringify(await exportMetadata(c.env, await c.a())),
     ).not.toContain(key);
   });
+  it("prüft den Schlüssel mit einer Cloudflare-kompatiblen Anfrage ohne automatische Weiterleitung", async () => {
+    const fetcher = vi.fn(
+      async (url: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(url, init);
+        expect(request.url).toBe("https://api.groq.com/openai/v1/models");
+        expect(request.method).toBe("GET");
+        expect(request.redirect).toBe("manual");
+        expect(request.headers.get("Authorization")).toBe("Bearer " + key);
+        return models();
+      },
+    );
+    expect(
+      await changeAIProfile(
+        c.env,
+        "user_a",
+        json({ action: "save", key }),
+        fetcher,
+      ),
+    ).toMatchObject({ configured: true, suffix: "1234" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it.each([302, 307])(
+    "folgt einer Weiterleitung %s nicht und erhält den bisherigen Schlüssel",
+    async (status) => {
+      await save();
+      const fetcher = vi.fn(
+        async (_url: RequestInfo | URL, init?: RequestInit) => {
+          expect(init?.redirect).toBe("manual");
+          return new Response(null, {
+            status,
+            headers: { Location: "https://untrusted.example.invalid/collect" },
+          });
+        },
+      );
+      await expect(
+        changeAIProfile(
+          c.env,
+          "user_a",
+          json({ action: "save", key: secondKey }),
+          fetcher,
+        ),
+      ).rejects.toMatchObject({ code: "AI_REDIRECT" });
+      expect(fetcher).toHaveBeenCalledOnce();
+      expect(await readAIProfile(c.env, "user_a")).toMatchObject({
+        configured: true,
+        suffix: "1234",
+      });
+    },
+  );
   it("bindet den verschlüsselten Schlüssel kryptografisch an das Konto", async () => {
     await save();
     c.sql.exec(
@@ -463,7 +512,36 @@ describe("Erfassung, Datenschutz und Grenzen", () => {
           throw Error(key);
         }),
       ),
-    ).rejects.toMatchObject({ code: "AI_TIMEOUT" });
+    ).rejects.toMatchObject({ code: "AI_CONNECTION" });
+  });
+  it("unterscheidet eine Zeitüberschreitung von einem Verbindungsfehler", async () => {
+    await save();
+    const timeout = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    const fetcher = vi.fn(async () => {
+      timeout.abort();
+      throw Error(key);
+    });
+    await expect(
+      message(undefined, c.a1, "user_a", fetcher),
+    ).rejects.toMatchObject({
+      code: "AI_TIMEOUT",
+      message:
+        "Groq hat innerhalb von 30 Sekunden nicht geantwortet. Bitte später erneut versuchen.",
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it("behandelt einen ausdrücklichen Abbruch nicht als Zeitüberschreitung", async () => {
+    await save();
+    const controller = new AbortController(),
+      fetcher = vi.fn(async () => {
+        controller.abort();
+        throw Error(key);
+      });
+    await expect(
+      message(undefined, c.a1, "user_a", fetcher, controller.signal),
+    ).rejects.toMatchObject({ code: "AI_CANCELLED", status: 409 });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });
 

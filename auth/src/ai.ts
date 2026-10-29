@@ -180,16 +180,27 @@ async function provider(
   signal: AbortSignal,
   fetcher: Fetcher,
 ) {
+  const timeout = AbortSignal.timeout(30000);
   try {
     const result = await fetcher("https://api.groq.com/openai/v1/" + path, {
       ...init,
-      redirect: "error",
+      // workerd rejects redirect: "error" before sending the request.
+      // Manual handling also prevents forwarding the key on a redirect.
+      redirect: "manual",
       headers: {
         ...Object.fromEntries(new Headers(init.headers)),
         Authorization: "Bearer " + key,
       },
-      signal: AbortSignal.any([signal, AbortSignal.timeout(30000)]),
+      signal: AbortSignal.any([signal, timeout]),
     });
+    if (result.status >= 300 && result.status < 400) {
+      await result.body?.cancel();
+      problem(
+        502,
+        "Groq hat eine unerwartete Weiterleitung gemeldet. Die Anfrage wurde zum Schutz deines Schlüssels gestoppt.",
+        "AI_REDIRECT",
+      );
+    }
     if (result.status === 401 || result.status === 403)
       problem(
         400,
@@ -226,12 +237,17 @@ async function provider(
       String(error.code).startsWith("AI_")
     )
       throw error;
+    if (signal.aborted) problem(409, "KI-Anfrage abgebrochen.", "AI_CANCELLED");
+    if (timeout.aborted)
+      problem(
+        502,
+        "Groq hat innerhalb von 30 Sekunden nicht geantwortet. Bitte später erneut versuchen.",
+        "AI_TIMEOUT",
+      );
     problem(
       502,
-      signal.aborted
-        ? "KI-Anfrage abgebrochen."
-        : "Der KI-Dienst antwortet gerade nicht. Bitte später erneut versuchen.",
-      signal.aborted ? "AI_CANCELLED" : "AI_TIMEOUT",
+      "Die Verbindung zu Groq konnte nicht hergestellt werden. Bitte später erneut versuchen.",
+      "AI_CONNECTION",
     );
   }
 }
