@@ -1,0 +1,89 @@
+.vehicle-catalog {
+  margin-block: 0.8rem 1.2rem;
+}
+.catalog-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.9rem;
+}
+.catalog-toolbar > .icon-btn {
+  flex: 0 0 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #c8d3cd;
+  border-radius: 50%;
+  color: #334c40;
+  background: #fff;
+  cursor: pointer;
+}
+.catalog-picker {
+  padding: 1rem;
+  border: 1px solid var(--line, #d9dfdc);
+  border-radius: 12px;
+  background: #f8faf9;
+}
+.catalog-picker > .button {
+  margin-top: 1rem;
+}
+.catalog-choice {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.catalog-choice > label {
+  font-weight: 600;
+}
+.catalog-choice input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.catalog-results {
+  position: absolute;
+  z-index: 25;
+  top: 100%;
+  inset-inline: 0;
+  max-height: 17rem;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #aab6b0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #172b2520;
+}
+.catalog-results [role="option"] {
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.catalog-results [role="option"]:hover,
+.catalog-results .active {
+  background: #e5ece8;
+  color: #182d25;
+}
+.catalog-results [aria-selected="true"] {
+  font-weight: 700;
+}
+.catalog-results p {
+  margin: 0.7rem;
+  color: #53635b;
+  font-size: 0.85rem;
+}
+.catalog-info {
+  font-size: 0.9rem;
+  padding: 0.8rem 1rem;
+  margin-block: 0.7rem;
+  border: 1px solid #d9dfdc;
+  border-radius: 8px;
+}
+.vehicle-catalog [hidden] {
+  display: none;
+}
+@media (max-width: 600px) {
+  .catalog-picker .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

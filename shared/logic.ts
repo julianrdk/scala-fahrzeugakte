@@ -1,4 +1,5 @@
 import { sha256 } from "@noble/hashes/sha256";
+import { validCatalogReference } from "./vehicle-catalog";
 import {
   metadataValue,
   validateCapture,
@@ -751,6 +752,19 @@ export function validateState(s: State) {
   )
     fail("Ungültige Einstellungen.");
   for (const v of s.Vehicles) {
+    if (
+      v.power_kw != null &&
+      (typeof v.power_kw !== "number" ||
+        !Number.isFinite(v.power_kw) ||
+        v.power_kw <= 0 ||
+        v.power_kw > 10000)
+    )
+      fail("Ungültige Fahrzeugleistung.");
+    if (
+      v.catalog_reference != null &&
+      !validCatalogReference(v.catalog_reference)
+    )
+      fail("Ungültige KBA-Quellenreferenz.");
     if (v.accent_color != null && !/^#[0-9a-f]{6}$/i.test(v.accent_color))
       fail("Ungültige Akzentfarbe.");
     for (const k of [
@@ -920,6 +934,8 @@ const patchFields: Partial<Record<Table, string[]>> = {
     "fuel_type",
     "photo_id",
     "accent_color",
+    "power_kw",
+    "catalog_reference",
   ],
   Settings: [
     "hidden_categories",

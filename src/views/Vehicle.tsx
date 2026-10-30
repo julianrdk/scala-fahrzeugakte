@@ -24,6 +24,10 @@ import { prepareFile, type Adapter } from "../adapter";
 import "../cloudflare.css";
 import { Field } from "../Field";
 import { vehicleColors } from "../theme";
+import {
+  VehicleCatalogFields,
+  identityFromForm,
+} from "../VehicleCatalogFields";
 import "../login.css";
 import {
   Btn,
@@ -52,6 +56,7 @@ export function VehicleForm({
 }) {
   const v = s.Vehicles[0];
   const [accent, setAccent] = useState(v.accent_color ?? "");
+  const [selecting, setSelecting] = useState(false);
   useEffect(() => setAccent(v.accent_color ?? ""), [v.id, v.accent_color]);
   return (
     <>
@@ -60,31 +65,33 @@ export function VehicleForm({
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (selecting) return;
             const f = new FormData(e.currentTarget),
               patch: any = {};
             for (const k of [
-              "manufacturer",
-              "model",
               "year",
               "first_registration",
               "engine",
               "vin",
               "plate",
               "purchase_date",
-              "fuel_type",
             ])
               patch[k] = String(f.get(k)) || null;
             patch.purchase_odometer = number(
               String(f.get("purchase_odometer")),
             );
             patch.accent_color = accent || null;
+            Object.assign(patch, identityFromForm(f));
             edit("Vehicles", v, patch);
           }}
         >
+          <VehicleCatalogFields
+            key={v.id}
+            initial={v}
+            onSelecting={setSelecting}
+          />
           <div className="form-grid">
             {[
-              ["manufacturer", "Hersteller"],
-              ["model", "Modell"],
               ["year", "Baujahr"],
               ["first_registration", "Erstzulassung"],
               ["engine", "Motor / Motorkennbuchstabe"],
@@ -92,7 +99,6 @@ export function VehicleForm({
               ["plate", "Kennzeichen"],
               ["purchase_date", "Kaufdatum"],
               ["purchase_odometer", "Kilometer bei Kauf"],
-              ["fuel_type", "Kraftstoff"],
             ].map(([k, l]) => (
               <Field key={k} label={l}>
                 <input
@@ -138,7 +144,7 @@ export function VehicleForm({
               Standard
             </button>
           </fieldset>
-          <Btn type="submit" primary>
+          <Btn type="submit" primary disabled={selecting}>
             Fahrzeugdaten speichern
           </Btn>
         </form>

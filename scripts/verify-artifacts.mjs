@@ -1,4 +1,30 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
+import path from "node:path";
+function publicFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((e) => {
+    const file = path.join(directory, e.name);
+    return e.isDirectory() ? publicFiles(file) : [file];
+  });
+}
+const published = publicFiles("dist");
+if (
+  published.length > 20000 ||
+  published.some((f) => fs.statSync(f).size > 25 * 1024 * 1024)
+)
+  throw Error(
+    "Die Dateigrenzen von Cloudflare Pages Free werden überschritten.",
+  );
+const catalog = JSON.parse(
+  fs.readFileSync("dist/vehicle-catalog/index.json", "utf8"),
+);
+for (const entry of catalog.makes) {
+  if (!/^[a-z0-9]+\.[a-f0-9]{12}\.json$/.test(entry.file))
+    throw Error("Ungültiger Katalogpfad.");
+  const bytes = fs.readFileSync("dist/vehicle-catalog/" + entry.file);
+  if (createHash("sha256").update(bytes).digest("hex") !== entry.sha256)
+    throw Error("Prüfsumme der Katalogdatei stimmt nicht: " + entry.file);
+}
 for (const file of [
   "worker.min.js",
   "core/tesseract-core-lstm.wasm.js",

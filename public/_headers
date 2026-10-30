@@ -13,3 +13,7 @@
   Cache-Control: public, max-age=86400
 /config.json
   Cache-Control: no-store
+/vehicle-catalog/index.json
+  Cache-Control: no-cache
+/vehicle-catalog/*
+  Cache-Control: public, max-age=3600

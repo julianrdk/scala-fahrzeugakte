@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "catalog:import": "node scripts/import-kba.mjs",
     "dev": "node scripts/prepare-ocr.mjs && vite --host 127.0.0.1",
     "preview": "vite preview --host 127.0.0.1",
     "schema": "node scripts/schema.mjs",
@@ -45,6 +46,7 @@
     "esbuild": "0.28.2",
     "happy-dom": "^21.0.4",
     "prettier": "3.9.10",
+    "saxes": "6.0.0",
     "typescript": "5.9.3",
     "vite": "8.3.4",
     "vitest": "5.0.5",

@@ -166,6 +166,8 @@ export type Vehicle = Meta & {
   fuel_type: string | null;
   photo_id: string | null;
   accent_color?: string | null;
+  power_kw?: number | null;
+  catalog_reference?: import("./vehicle-catalog").CatalogReference | null;
 };
 export type Odometer = Meta & {
   date: string;

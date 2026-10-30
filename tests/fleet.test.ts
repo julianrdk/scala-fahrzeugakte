@@ -49,6 +49,52 @@ async function book(id = c.a1, extra: any = {}, op = crypto.randomUUID()) {
   );
 }
 describe("Mehrere Fahrzeuge, Konto und gezielte Änderungen", () => {
+  it("speichert KBA-Auswahl nur im eigenen Fahrzeug und erhält sie beim erneuten Laden", async () => {
+    const ref = {
+      source: "kba",
+      as_of: "2026-01-01",
+      make: "skoda",
+      model: "SCALA",
+      variant: "0123456789abcdef",
+      types: [{ manufacturer: "SKODA (CZ)", tsn: "ATZ", hsn: "8004" }],
+    };
+    const account = await c.a();
+    const result = await accountAction(
+      c.env,
+      account,
+      "createVehicle",
+      {
+        manufacturer: "Škoda",
+        model: "SCALA",
+        power_kw: 70,
+        fuel_type: "Benzin",
+        catalog_reference: ref,
+        expected_revision: account.revision,
+      },
+      crypto.randomUUID(),
+    );
+    const saved = await state(result.result.id);
+    expect(saved.Vehicles[0]).toMatchObject({
+      power_kw: 70,
+      fuel_type: "Benzin",
+      catalog_reference: ref,
+    });
+    expect((await state(c.a1)).Vehicles[0].power_kw).toBeUndefined();
+    expect(
+      (await state(c.b1, "user_b")).Vehicles[0].catalog_reference,
+    ).toBeUndefined();
+    await expect(state(result.result.id, "user_b")).rejects.toThrow();
+    await c.write(result.result.id, "edit", {
+      table: "Vehicles",
+      id: result.result.id,
+      revision: saved.Vehicles[0].revision,
+      patch: { power_kw: 71, catalog_reference: null },
+    });
+    expect((await state(result.result.id)).Vehicles[0]).toMatchObject({
+      power_kw: 71,
+      catalog_reference: null,
+    });
+  });
   it("speichert Akzentfarben nur im gewählten Fahrzeug und weist ungültige Farben ab", async () => {
     const first = await state();
     await c.write(c.a1, "edit", {
@@ -402,7 +448,19 @@ describe("Private Originale, Galerie, Wiederherstellung und Migration", () => {
       table: "Vehicles",
       id: c.a1,
       revision: s.Vehicles[0].revision,
-      patch: { photo_id: photo.id, accent_color: "#bcc1c6" },
+      patch: {
+        photo_id: photo.id,
+        accent_color: "#bcc1c6",
+        power_kw: 70,
+        catalog_reference: {
+          source: "kba",
+          as_of: "2026-01-01",
+          make: "skoda",
+          model: "SCALA",
+          variant: null,
+          types: [],
+        },
+      },
     });
     s = await state();
     const other = canonical(await state(c.a2)),
@@ -420,6 +478,10 @@ describe("Private Originale, Galerie, Wiederherstellung und Migration", () => {
     expect(restored.Expenses).toEqual(s.Expenses);
     expect(restored.Vehicles[0].photo_id).toBe(photo.id);
     expect(restored.Vehicles[0].accent_color).toBe("#bcc1c6");
+    expect(restored.Vehicles[0].power_kw).toBe(70);
+    expect(restored.Vehicles[0].catalog_reference).toEqual(
+      s.Vehicles[0].catalog_reference,
+    );
     expect(canonical(await state(c.a2))).toBe(other);
   });
   it("hält Daten vor Aktivierung getrennt und weist fremde Wiederherstellungen ab", async () => {

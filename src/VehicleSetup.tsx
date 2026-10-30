@@ -1,3 +1,8 @@
+import { useState } from "react";
+import type { VehicleCreation } from "../shared/vehicle";
+import { VehicleCatalogFields, identityFromForm } from "./VehicleCatalogFields";
+import { Field } from "./Field";
+
 export function VehicleSetup({
   busy,
   error,
@@ -7,14 +12,11 @@ export function VehicleSetup({
 }: {
   busy: boolean;
   error: string;
-  onSave: (input: {
-    manufacturer: string;
-    model: string;
-    year: string;
-  }) => void;
+  onSave: (input: VehicleCreation) => void;
   onLogout?: () => void;
   testMode?: boolean;
 }) {
+  const [selecting, setSelecting] = useState(true);
   return (
     <div className="login-screen">
       <main className="login-card">
@@ -28,34 +30,16 @@ export function VehicleSetup({
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (busy || selecting) return;
             const data = new FormData(e.currentTarget);
             onSave({
-              manufacturer: String(data.get("manufacturer") ?? "").trim(),
-              model: String(data.get("model") ?? "").trim(),
+              ...identityFromForm(data),
               year: String(data.get("year") ?? "").trim(),
+              engine: String(data.get("engine") ?? "").trim() || null,
             });
           }}
         >
-          <label className="field">
-            <span>Hersteller</span>
-            <input
-              name="manufacturer"
-              placeholder="z. B. Volkswagen"
-              required
-              maxLength={100}
-              autoComplete="off"
-            />
-          </label>
-          <label className="field">
-            <span>Modell</span>
-            <input
-              name="model"
-              placeholder="z. B. Golf"
-              required
-              maxLength={100}
-              autoComplete="off"
-            />
-          </label>
+          <VehicleCatalogFields initiallyOpen onSelecting={setSelecting} />
           <label className="field">
             <span>Baujahr (optional)</span>
             <input
@@ -66,7 +50,10 @@ export function VehicleSetup({
               pattern="[0-9]{4}"
             />
           </label>
-          <button className="button primary" disabled={busy}>
+          <Field label="Motor / Motorkennbuchstabe">
+            <input name="engine" maxLength={100} />
+          </Field>
+          <button className="button primary" disabled={busy || selecting}>
             {busy ? "Wird gespeichert …" : "Fahrzeug hinzufügen"}
           </button>
         </form>

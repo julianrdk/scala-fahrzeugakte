@@ -1,0 +1,1 @@
+{"version":1,"as_of":"2026-01-01","id":"lada","label":"LADA","aliases":["LADA"],"models":[{"id":"lada4x4lada4x4niva-6723a7ce","label":"LADA 4X4 ,LADA 4X4 NIVA","variants":[{"id":"d103703b7bfb4de7","fuel_type":"Benzin","power_kw":61,"references":[{"manufacturer":"LADA","tsn":"AAA","hsn":"1556"}]}]}]}
