@@ -13,6 +13,7 @@ import type { Meta, State, Table } from "../shared/types";
 import { vehicleName } from "../shared/vehicle";
 import { prepareFile, type Adapter } from "./adapter";
 import "./gallery.css";
+import "./photo-layout.css";
 import { Photo } from "./PhotoSession";
 type Runner = (
   action: () => Promise<void>,
@@ -63,12 +64,12 @@ export function VehicleHero({ s, total }: { s: State; total?: number }) {
           aria-label="Fahrzeugbilder"
         >
           <div className="pinboard-main">
-            <Photo doc={shown[0]} priority />
+            <Photo doc={shown[0]} priority natural />
           </div>
           {shown.length > 1 && (
             <div className={"pinboard-thumbs count-" + (shown.length - 1)}>
               {shown.slice(1).map((doc) => (
-                <Photo key={doc.id} doc={doc} />
+                <Photo key={doc.id} doc={doc} natural />
               ))}
             </div>
           )}

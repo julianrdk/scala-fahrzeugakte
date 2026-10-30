@@ -5,14 +5,12 @@ import {
   Link as LinkIcon,
   Plus,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   blankPackage,
   currentOdometer,
   dueStatus,
   odometerWarnings,
-  researchPrompt,
-  templateKey,
 } from "../../shared/logic";
 import type {
   Doc,
@@ -25,6 +23,7 @@ import type {
 import { prepareFile, type Adapter } from "../adapter";
 import "../cloudflare.css";
 import { Field } from "../Field";
+import { vehicleColors } from "../theme";
 import "../login.css";
 import {
   Btn,
@@ -52,6 +51,8 @@ export function VehicleForm({
   onPreview: (p: ImportPackage) => void;
 }) {
   const v = s.Vehicles[0];
+  const [accent, setAccent] = useState(v.accent_color ?? "");
+  useEffect(() => setAccent(v.accent_color ?? ""), [v.id, v.accent_color]);
   return (
     <>
       <section className="panel">
@@ -76,6 +77,7 @@ export function VehicleForm({
             patch.purchase_odometer = number(
               String(f.get("purchase_odometer")),
             );
+            patch.accent_color = accent || null;
             edit("Vehicles", v, patch);
           }}
         >
@@ -108,6 +110,34 @@ export function VehicleForm({
               </Field>
             ))}
           </div>
+          <fieldset className="vehicle-colors">
+            <legend>Akzentfarbe</legend>
+            {vehicleColors.map(([label, color]) => (
+              <button
+                key={color}
+                type="button"
+                className="vehicle-color"
+                title={label}
+                aria-label={label}
+                aria-pressed={accent.toLowerCase() === color}
+                style={{ backgroundColor: color }}
+                onClick={() => setAccent(color)}
+              />
+            ))}
+            <input
+              type="color"
+              aria-label="Freie Akzentfarbe"
+              value={accent || "#19644b"}
+              onChange={(e) => setAccent(e.target.value)}
+            />
+            <button
+              type="button"
+              className="button"
+              onClick={() => setAccent("")}
+            >
+              Standard
+            </button>
+          </fieldset>
           <Btn type="submit" primary>
             Fahrzeugdaten speichern
           </Btn>
@@ -553,42 +583,6 @@ export function Reminders({
             </Field>
             <Btn type="submit">Anhand dieser Arbeit erledigen</Btn>
           </form>
-          <details>
-            <summary>Für ChatGPT kopieren</summary>
-            <pre className="prompt-text">
-              {researchPrompt(
-                r,
-                s.Vehicles[0],
-                s.Work.find(
-                  (w) =>
-                    w.id === r.basis_work_ref || w.id === r.completed_work_id,
-                ),
-                s.Settings[0].prompt_templates[templateKey(r.title)],
-              )}
-            </pre>
-            <Btn
-              onClick={() =>
-                run(
-                  () =>
-                    navigator.clipboard.writeText(
-                      researchPrompt(
-                        r,
-                        s.Vehicles[0],
-                        s.Work.find(
-                          (w) =>
-                            w.id === r.basis_work_ref ||
-                            w.id === r.completed_work_id,
-                        ),
-                        s.Settings[0].prompt_templates[templateKey(r.title)],
-                      ),
-                    ),
-                  "Recherchetext kopiert.",
-                )
-              }
-            >
-              Recherchetext kopieren
-            </Btn>
-          </details>
           <Btn onClick={() => edit("Reminders", r, { voided: !r.voided })}>
             {r.voided ? "Regel wieder aktivieren" : "Regel pausieren"}
           </Btn>

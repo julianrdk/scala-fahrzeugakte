@@ -32,6 +32,57 @@ if (params.has("mobile")) {
       async () => identity.token,
     );
     const initial = await adapter.bootstrap();
+    let fuelCalls = 0;
+    if (params.has("fuel")) {
+      // Only this explicit local fixture fakes GPS and prices. OSM tiles stay real.
+      Object.defineProperty(navigator, "geolocation", {
+        configurable: true,
+        value: {
+          getCurrentPosition: (success: PositionCallback) =>
+            queueMicrotask(() =>
+              success({
+                coords: { latitude: 52.52, longitude: 13.4 },
+              } as GeolocationPosition),
+            ),
+        },
+      });
+      adapter.fuelStatus = async () => ({ enabled: true });
+      adapter.resolveFuelLocation = async (code) =>
+        code === "50667"
+          ? { lat: 50.94, lng: 6.96, label: "PLZ 50667" }
+          : { lat: 52.52, lng: 13.4, label: "PLZ " + code };
+      adapter.searchFuel = async (query) => {
+        document.getElementById("fixture-fuel-calls")!.textContent =
+          "Preisabfragen: " + ++fuelCalls;
+        const center =
+          "lat" in query
+            ? { ...query, label: "Suchbereich" }
+            : { lat: 52.52, lng: 13.4, label: "Berlin" };
+        return {
+          center,
+          fetchedAt: new Date().toISOString(),
+          cached: true,
+          stations: [1, 2].map((n) => ({
+            id: "synthetic-station-" + n,
+            name: n === 1 ? "Testtankstelle Mitte" : "Testtankstelle West",
+            brand: "Test",
+            street: "Beispielstraße",
+            houseNumber: String(n),
+            postCode: "10115",
+            place: "Berlin",
+            lat: center.lat + n * 0.004,
+            lng: center.lng + n * 0.004,
+            distance: n * 1.2,
+            isOpen: true,
+            prices: {
+              e5: 1.789 + n * 0.01,
+              e10: 1.729 + n * 0.01,
+              diesel: 1.619 + n * 0.01,
+            },
+          })),
+        };
+      };
+    }
     if (params.has("ai")) {
       // Deliberate browser-only fake; neither secrets nor provider usage.
       adapter.aiProfile = async () => ({
@@ -104,6 +155,13 @@ if (params.has("mobile")) {
             ? " · KI-Antworten simuliert · keine Groq-Aufrufe"
             : ""}
           {params.has("voice") ? " · Mikrofon durch Testton ersetzt" : ""}
+          {params.has("fuel") && (
+            <>
+              {" "}
+              · Tankpreise und GPS simuliert ·{" "}
+              <span id="fixture-fuel-calls">Preisabfragen: 0</span>
+            </>
+          )}
         </p>
         <App
           external={{

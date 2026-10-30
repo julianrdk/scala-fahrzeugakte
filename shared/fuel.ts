@@ -24,6 +24,10 @@ export type FuelResult = {
 export type FuelStatus = { enabled: boolean; reason?: "key" | "database" };
 export interface FuelService {
   fuelStatus(): Promise<FuelStatus>;
+  resolveFuelLocation(
+    postalCode: string,
+    signal?: AbortSignal,
+  ): Promise<FuelPoint>;
   searchFuel(query: FuelQuery, signal?: AbortSignal): Promise<FuelResult>;
 }
 export class FuelSearchError extends Error {

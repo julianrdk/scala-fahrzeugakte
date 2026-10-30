@@ -511,6 +511,14 @@ export class CloudflareAdapter implements Adapter {
   fuelStatus() {
     return this.json("/v3/fuel/status") as Promise<FuelStatus>;
   }
+  resolveFuelLocation(postalCode: string, signal?: AbortSignal) {
+    return this.json("/v3/fuel/location", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postalCode }),
+      signal,
+    }) as Promise<import("../shared/fuel").FuelPoint>;
+  }
   searchFuel(query: FuelQuery, signal?: AbortSignal) {
     return this.json("/v3/fuel/search", {
       method: "POST",

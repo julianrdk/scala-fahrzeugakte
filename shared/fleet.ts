@@ -57,7 +57,6 @@ export type VehicleView = {
 export const sharedSettingFields = [
   "external_fuel_url",
   "email_enabled",
-  "prompt_templates",
   "backup_retention",
   "workshops",
   "self_workshop_id",

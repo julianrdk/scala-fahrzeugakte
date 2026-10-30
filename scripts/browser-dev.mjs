@@ -123,6 +123,12 @@ const server = await createServer({
                 "connect-src 'self' ws://127.0.0.1:5198",
               ),
           );
+          res.setHeader("Referrer-Policy", "no-referrer");
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader(
+            "Permissions-Policy",
+            "camera=(), microphone=(self), geolocation=(self)",
+          );
           if (req.url?.startsWith("/__fixture-token")) {
             const owner =
               new URL(req.url, "http://127.0.0.1").searchParams.get("owner") ===

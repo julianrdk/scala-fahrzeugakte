@@ -18,7 +18,6 @@ import {
   hashBytes,
   meta,
   parseImport,
-  researchPrompt,
   totals,
   validatePackage,
   verifySignature,
@@ -423,14 +422,6 @@ describe("Fälligkeiten und Verbrauch", () => {
     s.Reminders[0].fixed_calendar = true;
     completeReminder(s, s.Reminders[0].id, s.Work[0].id, at);
     expect(s.Reminders[0].due_date).toBe("2027-11-30");
-  });
-  it("berechnet keine erfundenen Spezifikationen und keine FIN im Prompt", () => {
-    const s = setup();
-    s.Vehicles[0].vin = "GEHEIME_FIN";
-    const text = researchPrompt(s.Reminders[0], s.Vehicles[0]);
-    expect(text).toContain("offen");
-    expect(text).toContain("Versand");
-    expect(text).not.toContain("GEHEIME_FIN");
   });
   it("summiert Teilbetankungen zwischen Volltankungen", () => {
     const p = blankPackage();

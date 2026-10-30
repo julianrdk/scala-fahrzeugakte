@@ -49,6 +49,37 @@ async function book(id = c.a1, extra: any = {}, op = crypto.randomUUID()) {
   );
 }
 describe("Mehrere Fahrzeuge, Konto und gezielte Änderungen", () => {
+  it("speichert Akzentfarben nur im gewählten Fahrzeug und weist ungültige Farben ab", async () => {
+    const first = await state();
+    await c.write(c.a1, "edit", {
+      table: "Vehicles",
+      id: c.a1,
+      revision: first.Vehicles[0].revision,
+      patch: { accent_color: "#123AbC" },
+    });
+    expect((await state()).Vehicles[0].accent_color).toBe("#123AbC");
+    expect((await state(c.a2)).Vehicles[0].accent_color).toBeUndefined();
+    expect(
+      (await state(c.b1, "user_b")).Vehicles[0].accent_color,
+    ).toBeUndefined();
+    for (const color of [
+      "red",
+      "#fff",
+      "#12345678",
+      "url(https://evil.invalid)",
+      123,
+    ]) {
+      const before = await state();
+      await expect(
+        c.write(c.a1, "edit", {
+          table: "Vehicles",
+          id: c.a1,
+          revision: before.Vehicles[0].revision,
+          patch: { accent_color: color },
+        }),
+      ).rejects.toThrow(/Akzentfarbe/);
+    }
+  });
   it("öffnet vier getrennte Fahrzeuge und wählt je Konto das zuletzt aktive Fahrzeug", async () => {
     const a = await bootstrap(c.env, await c.a()),
       b = await bootstrap(c.env, await c.a("user_b"));
@@ -371,7 +402,7 @@ describe("Private Originale, Galerie, Wiederherstellung und Migration", () => {
       table: "Vehicles",
       id: c.a1,
       revision: s.Vehicles[0].revision,
-      patch: { photo_id: photo.id },
+      patch: { photo_id: photo.id, accent_color: "#bcc1c6" },
     });
     s = await state();
     const other = canonical(await state(c.a2)),
@@ -388,6 +419,7 @@ describe("Private Originale, Galerie, Wiederherstellung und Migration", () => {
     const restored = await state();
     expect(restored.Expenses).toEqual(s.Expenses);
     expect(restored.Vehicles[0].photo_id).toBe(photo.id);
+    expect(restored.Vehicles[0].accent_color).toBe("#bcc1c6");
     expect(canonical(await state(c.a2))).toBe(other);
   });
   it("hält Daten vor Aktivierung getrennt und weist fremde Wiederherstellungen ab", async () => {
@@ -743,6 +775,48 @@ async function http(
   );
 }
 describe("Tatsächlich signierte Clerk-Tokens und API-Grenzen", () => {
+  it("schützt die reine Ortsauflösung durch Sitzung, Ursprung und strikte Eingaben", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json([{ lat: "52.52", lon: "13.4" }])),
+    );
+    expect(
+      (
+        await http(
+          "fuel/location",
+          "user_a",
+          { postalCode: "10115" },
+          { headers: { Authorization: "" } },
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await http(
+          "fuel/location",
+          "user_a",
+          { postalCode: "10115" },
+          { headers: { Origin: "https://evil.invalid" } },
+        )
+      ).status,
+    ).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+    const response = await http("fuel/location", "user_a", {
+      postalCode: "10115",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ lat: 52.52, lng: 13.4 });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(
+      (
+        await http("fuel/location", "user_a", {
+          postalCode: "10115",
+          owner: "user_b",
+        })
+      ).status,
+    ).toBe(400);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
   it("startet ein neues verifiziertes Konto ohne falschen Migrationsdialog", async () => {
     vi.stubGlobal(
       "fetch",

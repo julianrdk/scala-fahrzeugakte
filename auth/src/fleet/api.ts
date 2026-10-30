@@ -4,6 +4,7 @@ import {
   FuelError,
   fuelStatus,
   searchFuel,
+  resolveFuelLocation,
   type FuelEnv,
 } from "../fuel";
 import { jsonBody } from "../http";
@@ -117,6 +118,10 @@ export async function handle(request: Request, env: FleetEnv) {
       return respond(await fuelStatus(fuelEnv));
     if (path === "/v3/fuel/search" && request.method === "POST")
       return respond(await searchFuel(fuelEnv, await fuelBody(request)));
+    if (path === "/v3/fuel/location" && request.method === "POST")
+      return respond(
+        await resolveFuelLocation(fuelEnv, await fuelBody(request)),
+      );
     if (path === "/v3/account/export" && request.method === "GET")
       return respond(await exportMetadata(env, a));
     if (path.startsWith("/v3/account/") && request.method === "POST") {

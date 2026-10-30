@@ -217,13 +217,6 @@ export function VoiceInput({
             />
             <span>{microphone}</span>
           </span>
-          {seconds >= 3 && (!level.measured || level.value < 0.003) && (
-            <small role="status">
-              {level.measured
-                ? "Mikrofon gerade sehr leise. Beim Sprechen sollte sich der Pegel bewegen."
-                : "Pegelanzeige nicht verfügbar. Du kannst die Aufnahme anschließend anhören."}
-            </small>
-          )}
           <button type="button" className="button" onClick={() => stop()}>
             <Square size={16} />
             Transkribieren

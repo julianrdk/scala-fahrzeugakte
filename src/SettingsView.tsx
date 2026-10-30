@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from "react";
 const AssistantSettings = lazy(() =>
   import("./AssistantSettings").then((m) => ({ default: m.AssistantSettings })),
 );
-import { researchTemplates, totals } from "../shared/logic";
+import { totals } from "../shared/logic";
 import type { Meta, State, Table } from "../shared/types";
 import { categories } from "../shared/types";
 import { Field } from "./Field";
@@ -43,14 +43,7 @@ export function SettingsView({
     [prepared, setPrepared] = useState<any>(null),
     [switchConfirm, setSwitchConfirm] = useState(false),
     [orphans, setOrphans] = useState<any[] | null>(null),
-    [template, setTemplate] = useState("oil_filter"),
     [accountRestore, setAccountRestore] = useState(false);
-  const labels: Record<string, string> = {
-    oil_filter: "Öl und Filter",
-    spark_plugs: "Zündkerzen",
-    tires: "Reifen",
-    general: "Allgemeine Wartung",
-  };
   return (
     <>
       <Suspense
@@ -230,48 +223,6 @@ export function SettingsView({
             <p className="muted">Noch keine Versandvorgänge.</p>
           )}
         </details>
-        <h3>Recherchevorlagen bearbeiten</h3>
-        <label className="field">
-          <span>Vorlage</span>
-          <select
-            value={template}
-            onChange={(e) => setTemplate(e.target.value)}
-          >
-            {Object.entries(labels).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-        <form
-          key={template + "-" + settings.revision}
-          onSubmit={(e) => {
-            e.preventDefault();
-            const text = String(new FormData(e.currentTarget).get("text"));
-            edit("Settings", settings, {
-              prompt_templates: {
-                ...settings.prompt_templates,
-                [template]: text,
-              },
-            });
-          }}
-        >
-          <Field
-            label="Textvorlage"
-            hint="Platzhalter: {{arbeit}}, {{fahrzeug}}, {{material}}, {{notizen}}. Nur bestätigte Angaben ergänzen."
-          >
-            <textarea
-              name="text"
-              rows={8}
-              defaultValue={
-                settings.prompt_templates[template] ??
-                researchTemplates[template]
-              }
-            />
-          </Field>
-          <button className="button">Vorlage speichern</button>
-        </form>
       </section>
       <section className="panel">
         <h2>Sichern und exportieren</h2>

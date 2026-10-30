@@ -6,6 +6,7 @@ import {
   FuelError,
   fuelStatus,
   searchFuel,
+  resolveFuelLocation,
   type FuelEnv,
 } from "../auth/src/fuel";
 import { fuelPrice, matchingStations } from "../shared/fuel";
@@ -67,6 +68,27 @@ afterEach(() => {
 const position = { lat: 52.52012, lng: 13.40023 };
 
 describe("Tankpreise: Einrichtung, Daten und Anbietergrenzen", () => {
+  it("löst eine PLZ ohne Preisanfrage oder Tankerkönig-Schlüssel auf und nutzt den Ortscache", async () => {
+    env.TANKERKOENIG_API_KEY = "";
+    expect(await resolveFuelLocation(env, { postalCode: "10115" })).toEqual({
+      lat: 52.52,
+      lng: 13.4,
+      label: "PLZ 10115",
+    });
+    await resolveFuelLocation(env, { postalCode: "10115" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain("nominatim.openstreetmap.org");
+    expect(sql.prepare("SELECT cache_key FROM fuel_cache").all()).toEqual([
+      { cache_key: "postal:10115" },
+    ]);
+    await expect(resolveFuelLocation(env, position)).rejects.toMatchObject({
+      status: 400,
+    });
+    await expect(
+      resolveFuelLocation(env, { postalCode: "10115", owner: "other" }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(calls).toHaveLength(1);
+  });
   it("verwendet ohne persönlichen Schlüssel und mit Demo-Key keine angeblichen Livepreise", async () => {
     for (const key of ["", "00000000-0000-0000-0000-000000000002"]) {
       env.TANKERKOENIG_API_KEY = key;

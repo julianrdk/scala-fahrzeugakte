@@ -40,10 +40,20 @@ export function ExpenseFields({
           <select
             value={e.category ?? ""}
             onChange={(x) =>
-              field(
-                "category",
-                (x.target.value || null) as ExpenseInput["category"],
-              )
+              onChange({
+                ...e,
+                category: (x.target.value || null) as ExpenseInput["category"],
+                fuel:
+                  x.target.value === "Tanken"
+                    ? (e.fuel ?? {
+                        liters: null,
+                        fuel_type: null,
+                        full_tank: null,
+                        missed_previous_fillup: null,
+                        station_name: null,
+                      })
+                    : undefined,
+              })
             }
           >
             <option value="">Noch ungeklärt</option>
@@ -64,42 +74,6 @@ export function ExpenseFields({
           value={moneyText(e.amount_cents)}
           onCommit={(x) => field("amount_cents", amountInput(x))}
         />
-        <Field label="Währung">
-          <input
-            value={e.currency ?? ""}
-            placeholder="z. B. EUR"
-            maxLength={3}
-            onChange={(x) =>
-              field("currency", x.target.value.toUpperCase() || null)
-            }
-          />
-        </Field>
-        <Field label="Kilometerstand">
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={e.odometer_km ?? ""}
-            onChange={(x) =>
-              field(
-                "odometer_km",
-                x.target.value === "" ? null : Number(x.target.value),
-              )
-            }
-          />
-        </Field>
-        <Field label="Verkäufer">
-          <input
-            value={e.vendor ?? ""}
-            onChange={(x) => field("vendor", x.target.value || null)}
-          />
-        </Field>
-        <Field label="Rechnungsnummer">
-          <input
-            value={e.invoice_number ?? ""}
-            onChange={(x) => field("invoice_number", x.target.value || null)}
-          />
-        </Field>
         <Field label="Zahlungsrichtung">
           <select
             value={e.cashflow_type ?? "expense"}
@@ -112,13 +86,54 @@ export function ExpenseFields({
           </select>
         </Field>
       </div>
-      <Field label="Notizen">
-        <textarea
-          rows={2}
-          value={e.notes ?? ""}
-          onChange={(x) => field("notes", x.target.value || null)}
-        />
-      </Field>
+      <details open={!!e.vendor || !!e.invoice_number || !!e.notes}>
+        <summary>Weitere Angaben</summary>
+        <div className="form-grid">
+          <Field label="Währung">
+            <input
+              value={e.currency ?? ""}
+              placeholder="z. B. EUR"
+              maxLength={3}
+              onChange={(x) =>
+                field("currency", x.target.value.toUpperCase() || null)
+              }
+            />
+          </Field>
+          <Field label="Kilometerstand">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={e.odometer_km ?? ""}
+              onChange={(x) =>
+                field(
+                  "odometer_km",
+                  x.target.value === "" ? null : Number(x.target.value),
+                )
+              }
+            />
+          </Field>
+          <Field label="Verkäufer">
+            <input
+              value={e.vendor ?? ""}
+              onChange={(x) => field("vendor", x.target.value || null)}
+            />
+          </Field>
+          <Field label="Rechnungsnummer">
+            <input
+              value={e.invoice_number ?? ""}
+              onChange={(x) => field("invoice_number", x.target.value || null)}
+            />
+          </Field>
+        </div>
+        <Field label="Notizen">
+          <textarea
+            rows={2}
+            value={e.notes ?? ""}
+            onChange={(x) => field("notes", x.target.value || null)}
+          />
+        </Field>
+      </details>
       {e.fuel && (
         <details open>
           <summary>Tankangaben</summary>
@@ -199,8 +214,10 @@ export function ExpenseFields({
           </div>
         </details>
       )}
-      <details open={!!e.items?.length}>
-        <summary>Positionen</summary>
+      <details>
+        <summary>
+          Positionen{e.items?.length ? " (" + e.items.length + ")" : ""}
+        </summary>
         <PositionEditor
           parts={e.items ?? []}
           prices={prices}
@@ -224,6 +241,7 @@ export function WorkFields({
       <div className="form-grid">
         <Field label="Titel">
           <input
+            placeholder="z. B. Ölfilter gewechselt"
             value={w.title}
             onChange={(x) => field("title", x.target.value)}
           />
@@ -231,7 +249,22 @@ export function WorkFields({
         <Field label="Art der Arbeit">
           <select
             value={w.kind}
-            onChange={(x) => field("kind", x.target.value as WorkInput["kind"])}
+            onChange={(x) =>
+              onChange({
+                ...w,
+                kind: x.target.value as WorkInput["kind"],
+                modification_details:
+                  x.target.value === "modification"
+                    ? (w.modification_details ?? {
+                        manufacturer: null,
+                        part_number: null,
+                        approval_number: null,
+                        status:
+                          w.status === "planned" ? "planned" : "installed",
+                      })
+                    : undefined,
+              })
+            }
           >
             {Object.entries(workKinds).map(([key, label]) => (
               <option key={key} value={key}>
@@ -290,21 +323,28 @@ export function WorkFields({
             <option value="workshop">Werkstatt</option>
           </select>
         </Field>
-        <DecimalField
-          label="Kostenschätzung (keine Ausgabe)"
-          value={moneyText(w.estimated_cost_cents)}
-          onCommit={(x) => field("estimated_cost_cents", amountInput(x))}
-        />
+        {w.status === "planned" && (
+          <DecimalField
+            label="Kostenschätzung (keine Ausgabe)"
+            value={moneyText(w.estimated_cost_cents)}
+            onCommit={(x) => field("estimated_cost_cents", amountInput(x))}
+          />
+        )}
       </div>
-      <Field label="Beschreibung">
-        <textarea
-          rows={3}
-          value={w.description ?? ""}
-          onChange={(x) => field("description", x.target.value || null)}
-        />
-      </Field>
-      <details open={!!w.parts?.length}>
-        <summary>Teile und Material</summary>
+      <details open={!!w.description}>
+        <summary>Beschreibung</summary>
+        <Field label="Beschreibung">
+          <textarea
+            rows={3}
+            value={w.description ?? ""}
+            onChange={(x) => field("description", x.target.value || null)}
+          />
+        </Field>
+      </details>
+      <details>
+        <summary>
+          Teile und Material{w.parts?.length ? " (" + w.parts.length + ")" : ""}
+        </summary>
         <PositionEditor
           parts={w.parts ?? []}
           prices={[]}

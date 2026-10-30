@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Assistant } from "../src/Assistant";
 import { VoiceInput } from "../src/VoiceInput";
-import { Capture, ImportPreview } from "../src/views/Capture";
+import { Capture } from "../src/views/Capture";
 import {
   AI_AUDIO_BYTES,
   proposalToDraft,
@@ -135,7 +135,7 @@ describe("Assistent mit simuliertem Anbieter", () => {
     expect(JSON.stringify(p.adapter.aiMessage.mock.calls)).not.toContain(
       "existing-private-expense",
     );
-    await click("Entwurf prüfen");
+    await click("Ins Formular übernehmen");
     expect(p.onPreview.mock.calls[0][1]).toEqual(links);
   });
   it("verwirft eine laufende Aufnahme beim neuen Chat", async () => {
@@ -177,7 +177,7 @@ describe("Assistent mit simuliertem Anbieter", () => {
     expect(p.adapter.aiMessage).toHaveBeenCalledOnce();
     expect(host.textContent).toContain("Ölwechsel");
     expect(p.adapter.call).not.toHaveBeenCalled();
-    await click("Entwurf prüfen");
+    await click("Ins Formular übernehmen");
     expect(p.onPreview).toHaveBeenCalledWith(
       expect.objectContaining({
         package: expect.objectContaining({ schema_version: 1 }),
@@ -226,7 +226,7 @@ describe("Assistent mit simuliertem Anbieter", () => {
     );
     await click("Abbrechen");
     await act(async () => resolve(reply()));
-    expect(host.textContent).not.toContain("Entwurf prüfen");
+    expect(host.textContent).not.toContain("Ins Formular übernehmen");
     expect(host.querySelector("textarea")!.value).toContain("Ich habe");
     p.adapter.aiMessage.mockImplementation(async () => reply());
     await act(async () =>
@@ -236,9 +236,9 @@ describe("Assistent mit simuliertem Anbieter", () => {
           new Event("submit", { bubbles: true, cancelable: true }),
         ),
     );
-    expect(host.textContent).toContain("Entwurf prüfen");
+    expect(host.textContent).toContain("Ins Formular übernehmen");
     await act(async () => root.render(<Assistant {...p} reset={1} />));
-    expect(host.textContent).not.toContain("Entwurf prüfen");
+    expect(host.textContent).not.toContain("Ins Formular übernehmen");
     expect(host.querySelector("textarea")!.value).toBe("");
   });
   it("erhält Eingaben nach Anbieterfehler und löscht sie bei Schlüsselwechsel", async () => {
@@ -276,7 +276,7 @@ describe("Assistent mit simuliertem Anbieter", () => {
     expect(host.textContent).toContain("70,00");
     expect(host.textContent).toContain("65,00");
     await click("Vorschlag übernehmen");
-    await click("Entwurf prüfen");
+    await click("Ins Formular übernehmen");
     expect(p.onPreview.mock.calls[0][0].package.expenses[0].amount_cents).toBe(
       6500,
     );
@@ -299,17 +299,21 @@ describe("Formularübergabe und vorhandene Speicherregeln", () => {
             await action();
             return true;
           }}
-          onPreview={vi.fn()}
-          onReceiptDone={async () => {}}
+          onSaved={async () => {}}
           onAssistant={vi.fn()}
           onAssistantContext={(factory) => (context.current = factory)}
         />,
       ),
     );
-    await click("Manuell");
-    const title = host.querySelector<HTMLInputElement>('input[name="title"]')!;
-    title.value = "Bereits manuell eingegeben";
-    expect(context.current!().draft.package.expenses[0].title).toBe(
+    const title = host.querySelector<HTMLInputElement>(".entry-card input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(title, "Bereits manuell eingegeben");
+      title.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(context.current!().draft.package.work[0].title).toBe(
       "Bereits manuell eingegeben",
     );
     await act(async () => root.render(<div />));
@@ -322,21 +326,19 @@ describe("Formularübergabe und vorhandene Speicherregeln", () => {
       draft = reply().draft!;
     await act(async () =>
       root.render(
-        <ImportPreview
+        <Capture
           initial={draft.package}
           initialCapture={draft.capture}
           initialLinks={{ w1: ["existing"] }}
           s={emptyState()}
           adapter={service()}
-          captureSupported
+          supported
           busy={false}
           run={async (action) => {
             await action();
             return true;
           }}
-          onDone={async () => {}}
-          onBack={vi.fn()}
-          setProgress={vi.fn()}
+          onSaved={async () => {}}
           onAssistantContext={(factory) => (context.current = factory)}
         />,
       ),
@@ -358,12 +360,12 @@ describe("Formularübergabe und vorhandene Speicherregeln", () => {
     adapter.call.mockRejectedValue(Error("Verbindung abgebrochen"));
     await act(async () =>
       root.render(
-        <ImportPreview
+        <Capture
           initial={draft.package}
           initialCapture={draft.capture}
           s={emptyState()}
           adapter={adapter}
-          captureSupported
+          supported
           busy={false}
           run={async (action) => {
             try {
@@ -373,14 +375,12 @@ describe("Formularübergabe und vorhandene Speicherregeln", () => {
               return false;
             }
           }}
-          onDone={async () => {}}
-          onBack={vi.fn()}
-          setProgress={vi.fn()}
+          onSaved={async () => {}}
           onAssistantContext={(factory) => (context.current = factory)}
         />,
       ),
     );
-    await click("Geprüft speichern");
+    await click("Speichern");
     expect(() => context.current!()).toThrow(/Speichervorgang/);
     expect(host.textContent).toContain("Speichern wiederholen");
   });
@@ -410,7 +410,7 @@ describe("Mikrofon und Lebenszyklus", () => {
     await act(async () => root.render(<VoiceInput {...p} />));
     await click("Diktieren");
     await act(async () => vi.advanceTimersByTimeAsync(3200));
-    expect(host.textContent).toContain("sehr leise");
+    expect(host.textContent).not.toContain("sehr leise");
     await click("Transkribieren");
     expect(p.onAudio).not.toHaveBeenCalled();
     expect(p.onError).toHaveBeenLastCalledWith(
@@ -449,7 +449,7 @@ describe("Mikrofon und Lebenszyklus", () => {
     await act(async () => root.render(<VoiceInput {...p} />));
     await click("Diktieren");
     await act(async () => vi.advanceTimersByTimeAsync(3200));
-    expect(host.textContent).toContain("Pegelanzeige nicht verfügbar");
+    expect(host.textContent).not.toContain("Pegelanzeige nicht verfügbar");
     await click("Transkribieren");
     expect(p.onAudio).toHaveBeenCalledOnce();
     expect(m.close).toHaveBeenCalledOnce();

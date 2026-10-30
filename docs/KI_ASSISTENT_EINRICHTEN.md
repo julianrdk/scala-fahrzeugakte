@@ -80,16 +80,16 @@ Die App führt keine Tarifänderung aus, nutzt keinen gemeinsamen Ersatzschlüss
 
 ## Benutzen und prüfen
 
-- Unten rechts den Chat öffnen oder in der Erfassung **Mit KI** wählen. Ein aktives, nicht archiviertes Fahrzeug ist erforderlich.
-- Beispiel: „Gestern selbst Öl und Filter gewechselt, bei 82.400 km, Material 65 Euro.“ Der Assistent bereitet Arbeit und verknüpfte Ausgabe vor. **Entwurf prüfen** öffnet die bestehende Erfassung. Erst **Geprüft speichern** legt Einträge an. Verkäufer und Werkstatt getrennt prüfen.
-- Bei vorhandenen manuellen Angaben **Mit KI ergänzen** wählen. Abweichende Vorschläge lassen sich einzeln übernehmen; manuelle Werte bleiben erhalten.
+- Unten rechts den Chat öffnen. In der Erfassung führt auch „Beschreiben oder diktieren – der Assistent füllt die Felder aus.“ in denselben Chat. Ein aktives, nicht archiviertes Fahrzeug ist erforderlich.
+- Beispiel: „Gestern selbst Öl und Filter gewechselt, bei 82.400 km, Material 65 Euro.“ Der Assistent bereitet Arbeit und verknüpfte Ausgabe vor. **Ins Formular übernehmen** überträgt den Entwurf in die gemeinsame Erfassung. Erst **Speichern** legt Einträge an. Verkäufer und Werkstatt getrennt prüfen.
+- Bereits eingegebene Angaben und Anhänge bleiben erhalten. Abweichende Vorschläge lassen sich einzeln übernehmen. Dokumentdateien werden nicht automatisch an Groq übertragen.
 - **Diktieren** startet erst nach deinem Klick und der Mikrofonfreigabe. Nach spätestens zwei Minuten stoppt die Aufnahme. **Transkribieren** zeigt den Text; korrigieren und anschließend **Senden**. Unterstützte Browser können WebM, MP4 oder Ogg aufnehmen. Ohne Unterstützung oder Freigabe bleibt Texteingabe möglich.
 - Während der Aufnahme zeigt **Mikrofonpegel** das lokale Eingangssignal und den Namen des verwendeten Mikrofons. Der Balken sollte sich beim Sprechen bewegen. Wenn es am Handy funktioniert und am PC nicht: Im PC-Browser die Website-Einstellungen für das Mikrofon öffnen, das richtige Eingabegerät auswählen und erneut diktieren. Die Mikrofoneinstellung des Codex-Chats kann vom Browser abweichen.
 - Nach dem Stoppen lässt sich die letzte **Aufnahme anhören**. Ist deine Stimme dort klar hörbar, aber das Transkript falsch, liegt das Problem bei der Erkennung. Ist sie nicht hörbar, zuerst Mikrofonwahl, Stummschaltung und Eingangslautstärke prüfen. Die Vorschau bleibt nur im Speicher dieser geöffneten Chatansicht; eine neue Aufnahme, Entfernen, Schließen oder Abmelden gibt sie frei. **Senden** verarbeitet erst den kontrollierten Text.
 - Eine gemessene praktisch stille Aufnahme wird nicht zu Groq geschickt. Fehlt die technische Möglichkeit zur Pegelmessung, bleibt Diktieren verfügbar. Der Server prüft zusätzlich Groqs Erkennungsmetadaten; unsichere Aufnahmen werden vollständig zurückgewiesen, statt einzelne Angaben stillschweigend zu entfernen. Die Qualitätsprüfung ist eine Heuristik und kann nicht jede falsche Erkennung ausschließen.
 - Beim Verlassen der Seite oder Wechsel in den Hintergrund wird eine laufende Aufnahme verworfen und das Mikrofon freigegeben.
 - Schließen erhält den Chat während der Sitzung. Neuladen und Abmelden verwerfen ihn. Ein Fahrzeugwechsel warnt bei offenen Entwürfen und setzt den Chat zurück.
-- **Weitere Importmöglichkeiten → JSON importieren** bleibt für Vertrag v1 vorhanden. Lokale Belegerkennung benötigt keinen KI-Schlüssel.
+- Die separate JSON-Importoberfläche entfällt; interne Validierung und Sicherungsformat bleiben kompatibel. Lokale Belegerkennung benötigt keinen KI-Schlüssel.
 
 Pro Anfrage werden Gespräch, aktueller Entwurf, Fahrzeugbezeichnung und benötigte Werkstattnamen/-zuordnungen an Groq gesendet. Dokumente, Galerie, Adressen und übrige Fahrzeughistorie werden nicht automatisch mitgesendet. Diktate werden zur Transkription übertragen und nicht dauerhaft in D1/R2 abgelegt. Groq beschreibt die USA als Speicherort aufbewahrter Kundendaten; die optionale Aufbewahrungseinstellung gilt beim Anbieter.
 

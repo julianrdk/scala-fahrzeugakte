@@ -1,1049 +1,1064 @@
-import { ChevronRight, Download } from "lucide-react";
 import {
-  Suspense,
-  lazy,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import type { AssistantDraft, AssistantSeed } from "../../shared/assistant";
+  FilePlus2,
+  FileSearch,
+  Paperclip,
+  Plus,
+  Square,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type {
+  AssistantDraft,
+  AssistantSeed,
+  DraftConflict,
+} from "../../shared/assistant";
 import { validateCapture } from "../../shared/capture";
 import {
-  autoMatch,
   blankPackage,
   clone,
   duplicates,
-  parseImport,
   validatePackage,
 } from "../../shared/logic";
+import { parseReceipt, type ReceiptSuggestion } from "../../shared/receipt";
 import type {
   CaptureMetadata,
-  ExpenseInput,
   ImportPackage,
   State,
   WorkInput,
 } from "../../shared/types";
-import { categories } from "../../shared/types";
-import { vehicleName } from "../../shared/vehicle";
 import { prepareFile, type Adapter } from "../adapter";
-import { download } from "../backup";
-import "../cloudflare.css";
-import { Field, captureExample } from "../Field";
-import { ExpenseFields, WorkFields } from "../DraftFields";
-import "../login.css";
 import {
-  Btn,
-  cents,
-  date,
-  docTypes,
-  money,
-  number,
-  workKinds,
-  type Runner,
-} from "../view-support";
+  applyEntryAssistant,
+  entrySeed,
+  initialEntry,
+  newExpense,
+  newWork,
+} from "../entry-draft";
+import { ExpenseFields, WorkFields } from "../DraftFields";
+import { Field, SuggestedFields } from "../Field";
+import { display, fieldNames } from "../draft-labels";
 import { WorkshopSelect } from "../Workshops";
-const ReceiptCapture = lazy(() =>
-  import("../ReceiptCapture").then((m) => ({ default: m.ReceiptCapture })),
-);
+import { docTypes, money, date, type Runner } from "../view-support";
+import { ServiceError } from "../CloudflareAdapter";
+import "../capture.css";
+import "../entry.css";
+
+export type EntryApply = (
+  draft: AssistantDraft,
+  links?: Record<string, string[]>,
+) => void;
+type Props = {
+  s: State;
+  adapter: Adapter;
+  busy: boolean;
+  supported: boolean;
+  run: Runner;
+  initial?: ImportPackage;
+  initialCapture?: CaptureMetadata;
+  initialLinks?: Record<string, string[]>;
+  onSaved: (reused?: boolean) => Promise<void>;
+  onAssistant?: (seed?: AssistantSeed) => void;
+  onAssistantContext?: (factory: (() => AssistantSeed) | null) => void;
+  onAssistantApply?: (apply: EntryApply | null) => void;
+};
 export function Capture({
   s,
   adapter,
-  onPreview,
-  run,
   busy,
   supported,
-  onReceiptDone,
+  run,
+  initial,
+  initialCapture,
+  initialLinks,
+  onSaved,
   onAssistant,
   onAssistantContext,
-}: {
-  s: State;
-  adapter: Adapter;
-  onPreview: (p: ImportPackage, capture?: CaptureMetadata) => void;
-  run: Runner;
-  busy: boolean;
-  supported: boolean;
-  onReceiptDone: () => Promise<void>;
-  onAssistant?: (seed?: AssistantSeed) => void;
-  onAssistantContext?: (factory: (() => AssistantSeed) | null) => void;
-}) {
-  const [mode, setMode] = useState<"manual" | "json" | "ai" | "receipt">(
-      "receipt",
+  onAssistantApply,
+}: Props) {
+  const [draft, setDraft] = useState<AssistantDraft>(() =>
+      initial
+        ? { package: clone(initial), capture: clone(initialCapture ?? {}) }
+        : initialEntry(),
     ),
-    [text, setText] = useState(""),
-    [kind, setKind] = useState("expense"),
-    [cat, setCat] = useState<string>(categories[0]),
-    [manualPerformed, setManualPerformed] =
-      useState<WorkInput["performed_by"]>("unknown"),
-    [manualWorkshop, setManualWorkshop] = useState("");
-  const manualForm = useRef<HTMLFormElement>(null),
-    touched = useRef(new Set<string>());
-  const buildManual = (f: FormData): AssistantDraft => {
-    const p = blankPackage(),
-      title =
-        String(f.get("title") ?? "").trim() ||
-        (kind === "work" ? "Neue Arbeit" : "Neue Ausgabe"),
-      d = String(f.get("date") ?? "") || null,
-      km = number(String(f.get("km") ?? ""));
-    p.vehicle_label = vehicleName(s.Vehicles[0]) || null;
-    if (kind === "expense") {
-      const expense: ExpenseInput = {
-        ref: "expense1",
-        title,
-        category: cat as any,
-        date: d,
-        odometer_km: km,
-        amount_cents: cents(String(f.get("amount"))),
-        currency: String(f.get("currency")) || null,
-        vendor: String(f.get("vendor")) || null,
-        invoice_number: String(f.get("invoice")) || null,
-        document_refs: [],
-        notes: String(f.get("notes")) || null,
-        cashflow_type: f.get("income") ? "income" : "expense",
-      };
-      if (cat === "Tanken")
-        expense.fuel = {
-          liters: number(String(f.get("liters"))),
-          fuel_type: String(f.get("fuel_type")) || null,
-          full_tank:
-            f.get("tank") === "unknown" ? null : f.get("tank") === "full",
-          missed_previous_fillup:
-            f.get("missed") === "unknown" ? null : f.get("missed") === "yes",
-          station_name: String(f.get("station")) || null,
-        };
-      if (f.get("part_description"))
-        expense.items = [
-          {
-            description: String(f.get("part_description")),
-            part_number: String(f.get("part_number")) || null,
-            quantity: number(String(f.get("quantity"))),
-            unit: String(f.get("unit")) || null,
-            specification: String(f.get("spec")) || null,
-          },
-        ];
-      p.expenses.push(expense);
-    } else if (kind === "work") {
-      const w: WorkInput = {
-        ref: "work1",
-        title,
-        kind: String(f.get("work_kind")) as any,
-        status: String(f.get("status")) as any,
-        date: d,
-        odometer_km: km,
-        performed_by: String(f.get("performed")) as any,
-        description: String(f.get("notes")) || null,
-        expense_refs: [],
-        document_refs: [],
-        estimated_cost_cents: cents(String(f.get("estimate") ?? "")),
-      };
-      if (f.get("part_description"))
-        w.parts = [
-          {
-            description: String(f.get("part_description")),
-            part_number: String(f.get("part_number")) || null,
-            quantity: number(String(f.get("quantity"))),
-            unit: String(f.get("unit")) || null,
-            specification: String(f.get("spec")) || null,
-          },
-        ];
-      if (w.kind === "modification")
-        w.modification_details = {
-          manufacturer: String(f.get("manufacturer")) || null,
-          part_number: String(f.get("part_number")) || null,
-          approval_number: String(f.get("approval")) || null,
-          status: String(f.get("mod_status")) as any,
-        };
-      p.work.push(w);
-    } else {
-      p.documents.push({
-        ref: "doc1",
-        title,
-        source_filename: null,
-        document_type: String(f.get("doctype")) as any,
-      });
-    }
-    return {
-      package: p,
-      capture:
-        kind === "work" && manualWorkshop
-          ? { workshops_by_work_ref: { work1: manualWorkshop } }
-          : {},
-    };
-  };
-  const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    run(async () => {
-      const draft = buildManual(data);
-      onPreview(draft.package, draft.capture);
-    });
-  };
-  function manualSeed(): AssistantSeed {
-    if (!manualForm.current)
-      throw Error("Bitte zuerst das manuelle Formular öffnen.");
-    const data = new FormData(manualForm.current);
-    const draft = buildManual(data),
-      table = kind === "work" ? "work" : "expenses",
-      ref = kind === "work" ? "work1" : "expense1";
-    const fields: Record<string, string> = {
-      title: "title",
-      date: "date",
-      km: "odometer_km",
-      amount: "amount_cents",
-      currency: "currency",
-      vendor: "vendor",
-      invoice: "invoice_number",
-      notes: kind === "work" ? "description" : "notes",
-      income: "cashflow_type",
-      work_kind: "kind",
-      status: "status",
-      performed: "performed_by",
-      estimate: "estimated_cost_cents",
-      category: "category",
-      liters: "fuel",
-      fuel_type: "fuel",
-      tank: "fuel",
-      missed: "fuel",
-      station: "fuel",
-      part_description: kind === "work" ? "parts" : "items",
-      part_number: kind === "work" ? "parts" : "items",
-      quantity: kind === "work" ? "parts" : "items",
-      unit: kind === "work" ? "parts" : "items",
-      spec: kind === "work" ? "parts" : "items",
-      manufacturer: "modification_details",
-      approval: "modification_details",
-      mod_status: "modification_details",
-    };
-    return {
-      draft,
-      protectedFields: Array.from(touched.current).flatMap((name) =>
-        fields[name] ? [`${table}.${ref}.${fields[name]}`] : [],
-      ),
-    };
-  }
-  function assistManual() {
-    void run(async () => onAssistant?.(manualSeed()));
+    [links, setLinks] = useState<Record<string, string[]>>(() =>
+      clone(initialLinks ?? {}),
+    ),
+    [files, setFiles] = useState<Record<string, File>>({}),
+    [fileHashes, setFileHashes] = useState<Record<string, string>>({}),
+    [fileUrls, setFileUrls] = useState<Record<string, string>>({}),
+    [existingDocs, setExistingDocs] = useState<Record<string, string>>({}),
+    [kind, setKind] = useState<"work" | "expense" | "document">(() =>
+      initial?.work.length
+        ? "work"
+        : initial?.expenses.length
+          ? "expense"
+          : initial?.documents.length
+            ? "document"
+            : "work",
+    ),
+    [saving, setSaving] = useState(false),
+    [frozen, setFrozen] = useState(false),
+    [choosing, setChoosing] = useState(false),
+    [allowMissing, setAllowMissing] = useState(false),
+    [confirmRules, setConfirmRules] = useState(false),
+    [reason, setReason] = useState(""),
+    [duplicateReview, setDuplicateReview] = useState(false),
+    [readError, setReadError] = useState(""),
+    [progress, setProgress] = useState(""),
+    [reading, setReading] = useState(false),
+    [ocrRef, setOcrRef] = useState(""),
+    [forceOcr, setForceOcr] = useState(false),
+    [previews, setPreviews] = useState<string[]>([]),
+    [page, setPage] = useState(0),
+    [warnings, setWarnings] = useState<string[]>([]),
+    [conflicts, setConflicts] = useState<DraftConflict[]>([]),
+    [suggested, setSuggested] = useState(false),
+    [suggestions, setSuggestions] = useState<string[]>([]);
+  const [sources, setSources] = useState<Record<string, string>>({});
+  const touched = useRef(new Set<string>()),
+    baseline = useRef<AssistantDraft | null>(null),
+    latest = useRef({ draft, links, frozen, saving }),
+    operation = useRef(crypto.randomUUID()),
+    uploaded = useRef<Record<string, string>>({}),
+    saveLock = useRef(false),
+    alive = useRef(true),
+    controller = useRef<AbortController | null>(null),
+    generation = useRef(0),
+    previewUrls = useRef<string[]>([]),
+    previousInitial = useRef(initial),
+    host = useRef<HTMLElement>(null);
+  latest.current = { draft, links, frozen, saving };
+  const p = draft.package,
+    locked = busy || saving || frozen || choosing;
+  function changed(next: AssistantDraft) {
+    if (latest.current.frozen || saveLock.current) return;
+    operation.current = crypto.randomUUID();
+    uploaded.current = {};
+    latest.current.draft = next;
+    setDraft(next);
   }
   useEffect(() => {
-    onAssistantContext?.(
-      mode === "manual" && kind !== "document" ? manualSeed : null,
+    if (initial === previousInitial.current) return;
+    previousInitial.current = initial;
+    if (!initial || latest.current.frozen) return;
+    setDraft({ package: clone(initial), capture: clone(initialCapture ?? {}) });
+    setLinks(clone(initialLinks ?? {}));
+    touched.current.clear();
+    operation.current = crypto.randomUUID();
+    uploaded.current = {};
+    setKind(
+      initial.work.length
+        ? "work"
+        : initial.expenses.length
+          ? "expense"
+          : "document",
     );
+  }, [initial, initialCapture, initialLinks]);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      generation.current++;
+      controller.current?.abort();
+      previewUrls.current.forEach(URL.revokeObjectURL);
+    };
+  }, []);
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      Object.entries(files).map(([ref, file]) => [
+        ref,
+        URL.createObjectURL(file),
+      ]),
+    );
+    setFileUrls(urls);
+    return () => Object.values(urls).forEach(URL.revokeObjectURL);
+  }, [files]);
+  function seed(): AssistantSeed {
+    const current = latest.current;
+    if (current.frozen || current.saving)
+      throw Error("Bitte den unbestätigten Speichervorgang zuerst prüfen.");
+    if (!validControls()) throw Error("Bitte die markierten Felder prüfen.");
+    const result = entrySeed(current.draft, touched.current);
+    baseline.current = clone(current.draft);
+    return { ...result, links: clone(current.links) };
+  }
+  useEffect(() => {
+    onAssistantContext?.(seed);
     return () => onAssistantContext?.(null);
-  });
+  }, [onAssistantContext]);
+  useEffect(() => {
+    onAssistantApply?.((incoming, newLinks) => {
+      if (latest.current.frozen || latest.current.saving)
+        throw Error("Speichervorgang noch nicht bestätigt.");
+      const merged = applyEntryAssistant(
+        latest.current.draft,
+        incoming,
+        baseline.current,
+      );
+      changed(merged.draft);
+      setConflicts(merged.conflicts);
+      setLinks((old) =>
+        Object.fromEntries(
+          Object.entries({ ...newLinks, ...old }).filter(([ref]) =>
+            merged.draft.package.work.some((work) => work.ref === ref),
+          ),
+        ),
+      );
+      setKind(
+        merged.draft.package.work.length
+          ? "work"
+          : merged.draft.package.expenses.length
+            ? "expense"
+            : "document",
+      );
+    });
+    return () => onAssistantApply?.(null);
+  }, [onAssistantApply]);
+  function rowChange<T extends "work" | "expenses">(
+    table: T,
+    ref: string,
+    row: ImportPackage[T][number],
+  ) {
+    const next = clone(latest.current.draft),
+      previous = next.package[table].find((r) => r.ref === ref)!;
+    for (const [key, value] of Object.entries(row))
+      if (JSON.stringify(value) !== JSON.stringify((previous as any)[key]))
+        touched.current.add(table + "." + ref + "." + key);
+    (next.package[table] as any[]) = next.package[table].map((r) =>
+      r.ref === ref ? row : r,
+    );
+    if (
+      table === "work" &&
+      (row as WorkInput).performed_by === "self" &&
+      (previous as WorkInput).performed_by !== "self"
+    )
+      next.capture.workshops_by_work_ref = {
+        ...next.capture.workshops_by_work_ref,
+        [ref]: s.Settings[0].self_workshop_id ?? null,
+      };
+    changed(next);
+  }
+  function removeRow(table: "work" | "expenses", ref: string) {
+    generation.current++;
+    controller.current?.abort();
+    setReading(false);
+    setProgress("");
+    const next = clone(draft);
+    (next.package[table] as any[]) = next.package[table].filter(
+      (r) => r.ref !== ref,
+    );
+    if (table === "expenses") {
+      next.package.work.forEach((w) => {
+        w.expense_refs = w.expense_refs.filter((r) => r !== ref);
+      });
+      delete next.capture.prices_by_expense_ref?.[ref];
+    } else {
+      delete next.capture.workshops_by_work_ref?.[ref];
+      setLinks((old) => {
+        const copy = { ...old };
+        delete copy[ref];
+        return copy;
+      });
+    }
+    changed(next);
+  }
+  function addCost(work?: WorkInput) {
+    const next = clone(draft),
+      expense = newExpense("expense_" + crypto.randomUUID());
+    expense.title = work?.title ?? "";
+    expense.category = work ? "Wartung & Reparatur" : null;
+    expense.odometer_km = work?.odometer_km ?? null;
+    expense.document_refs = work?.document_refs ?? [];
+    next.package.expenses.push(expense);
+    if (work)
+      next.package.work
+        .find((w) => w.ref === work.ref)!
+        .expense_refs.push(expense.ref);
+    changed(next);
+  }
+  async function chooseFiles(selected: File[]) {
+    if (locked || reading || !selected.length) return;
+    setReadError("");
+    setChoosing(true);
+    try {
+      if (p.documents.length + selected.length > 100)
+        throw Error("Höchstens 100 Dokumente pro Eintrag.");
+      const hashes = new Map<File, string>();
+      for (const file of selected)
+        hashes.set(file, (await prepareFile(file)).sha256);
+      if (!alive.current || saveLock.current || latest.current.frozen) return;
+      const next = clone(latest.current.draft),
+        additions: Record<string, File> = {},
+        addedHashes: Record<string, string> = {};
+      for (const file of selected) {
+        const missing = next.package.documents.find(
+          (d) =>
+            !files[d.ref] &&
+            !additions[d.ref] &&
+            !existingDocs[d.ref] &&
+            (!d.source_filename || d.source_filename === file.name),
+        );
+        const ref = missing?.ref ?? "doc_" + crypto.randomUUID();
+        if (missing) {
+          missing.source_filename = file.name;
+          if (!missing.title || missing.title === "Neues Dokument")
+            missing.title = file.name;
+        } else
+          next.package.documents.push({
+            ref,
+            source_filename: file.name,
+            title: file.name.replace(/\.[^.]+$/, ""),
+            document_type: "invoice",
+          });
+        additions[ref] = file;
+        addedHashes[ref] = hashes.get(file)!;
+        if (next.package.work.length <= 1 && next.package.expenses.length <= 1)
+          [...next.package.work, ...next.package.expenses].forEach((r) => {
+            if (!r.document_refs.includes(ref)) r.document_refs.push(ref);
+          });
+      }
+      setFiles((old) => ({ ...old, ...additions }));
+      setFileHashes((old) => ({ ...old, ...addedHashes }));
+      changed(next);
+      setOcrRef(Object.keys(additions)[0]);
+    } catch (e) {
+      if (alive.current)
+        setReadError(e instanceof Error ? e.message : "Datei ungültig.");
+    } finally {
+      if (alive.current) setChoosing(false);
+    }
+  }
+  function applyReceipt(data: ReceiptSuggestion) {
+    const next = clone(latest.current.draft);
+    const suggestedPaths: string[] = [];
+    let expense = next.package.expenses[0];
+    const work = next.package.work[0],
+      planned = work?.status === "planned";
+    if (!expense && kind !== "document" && !planned) {
+      expense = newExpense("expense_" + crypto.randomUUID());
+      expense.category = work ? "Wartung & Reparatur" : null;
+      expense.document_refs = next.package.documents.map((d) => d.ref);
+      next.package.expenses.push(expense);
+      if (work) work.expense_refs.push(expense.ref);
+    }
+    const assign = (
+      table: "expenses" | "work",
+      row: any,
+      field: string,
+      value: unknown,
+    ) => {
+      const path = table + "." + row.ref + "." + field;
+      if (value != null && value !== "" && !touched.current.has(path)) {
+        row[field] = value;
+        suggestedPaths.push(path);
+      }
+    };
+    if (expense) {
+      assign(
+        "expenses",
+        expense,
+        "title",
+        data.invoice_number
+          ? "Rechnung " + data.invoice_number
+          : data.vendor || work?.title || data.items[0]?.description || "Beleg",
+      );
+      assign("expenses", expense, "date", data.date);
+      assign("expenses", expense, "amount_cents", data.amount_cents);
+      assign("expenses", expense, "invoice_number", data.invoice_number);
+      assign("expenses", expense, "vendor", data.vendor);
+      assign("expenses", expense, "currency", data.currency);
+      if (
+        data.items.length &&
+        !touched.current.has("expenses." + expense.ref + ".items")
+      ) {
+        expense.items = data.items;
+        next.capture.prices_by_expense_ref = {
+          ...next.capture.prices_by_expense_ref,
+          [expense.ref]: data.prices,
+        };
+      }
+    }
+    if (work) {
+      assign("work", work, "title", data.items[0]?.description);
+      if (planned && !expense)
+        assign("work", work, "estimated_cost_cents", data.amount_cents);
+      if (
+        data.items.length &&
+        !touched.current.has("work." + work.ref + ".parts")
+      )
+        work.parts = data.items;
+    }
+    changed(next);
+    setWarnings(data.warnings);
+    setSuggested(true);
+    setSuggestions(suggestedPaths);
+    setSources(data.sources);
+  }
+  async function readDocument() {
+    const file = files[ocrRef];
+    if (!file || locked || reading) return;
+    const id = ++generation.current,
+      aborter = new AbortController();
+    controller.current?.abort();
+    controller.current = aborter;
+    setReading(true);
+    setReadError("");
+    setProgress("Dokument wird ausgelesen …");
+    try {
+      const { readReceipt } = await import("../ocr");
+      if (aborter.signal.aborted) return;
+      const result = await readReceipt(file, {
+        signal: aborter.signal,
+        forceOcr,
+        onProgress: (message) => {
+          if (alive.current && id === generation.current) setProgress(message);
+        },
+      });
+      if (
+        !alive.current ||
+        id !== generation.current ||
+        aborter.signal.aborted
+      ) {
+        result.previews.forEach(URL.revokeObjectURL);
+        return;
+      }
+      previewUrls.current.forEach(URL.revokeObjectURL);
+      previewUrls.current = result.previews;
+      setPreviews(result.previews);
+      setPage(0);
+      applyReceipt(parseReceipt(result.pages));
+    } catch (e) {
+      if (alive.current && id === generation.current && !aborter.signal.aborted)
+        setReadError(e instanceof Error ? e.message : "Dokument nicht lesbar.");
+    } finally {
+      if (alive.current && id === generation.current) {
+        setReading(false);
+        setProgress("");
+      }
+    }
+  }
+  const missing = p.documents.filter(
+    (d) => !files[d.ref] && !existingDocs[d.ref],
+  );
+  const possibleDuplicates = duplicates(
+    s,
+    p,
+    Object.fromEntries(
+      p.documents.map((doc) => [
+        doc.ref,
+        fileHashes[doc.ref] ??
+          s.Documents.find((saved) => saved.id === existingDocs[doc.ref])
+            ?.sha256 ??
+          null,
+      ]),
+    ),
+  );
+  function validControls() {
+    const invalid = Array.from(
+      host.current?.querySelectorAll<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >("input,select,textarea") ?? [],
+    ).find((input) => !input.checkValidity());
+    if (invalid) {
+      let parent = invalid.parentElement;
+      while (parent) {
+        if (parent instanceof HTMLDetailsElement) parent.open = true;
+        parent = parent.parentElement;
+      }
+      invalid.reportValidity();
+      return false;
+    }
+    return true;
+  }
+  async function save() {
+    if (saveLock.current || busy || reading || choosing || !validControls())
+      return;
+    saveLock.current = true;
+    setSaving(true);
+    try {
+      await run(async () => {
+        const current = latest.current,
+          pack = validatePackage(current.draft.package);
+        validateCapture(current.draft.capture, pack, s);
+        if (
+          !pack.work.length &&
+          !pack.expenses.length &&
+          !pack.documents.length &&
+          !pack.reminders.length
+        )
+          throw Error("Bitte einen Eintrag ergänzen.");
+        if (pack.reminders.length && !confirmRules)
+          throw Error("Bitte die neuen Wartungsregeln bestätigen.");
+        if (missing.length && !allowMissing)
+          throw Error("Bitte fehlende Originale zuordnen.");
+        if (Object.keys(current.draft.capture).length && !supported)
+          throw Error("Speicherfunktion nicht verfügbar.");
+        const prepared: Record<
+          string,
+          Awaited<ReturnType<typeof prepareFile>>
+        > = {};
+        for (const d of pack.documents)
+          if (files[d.ref] && !uploaded.current[d.ref])
+            prepared[d.ref] = await prepareFile(files[d.ref]);
+        if (!alive.current) return;
+        setFrozen(true);
+        try {
+          const documents: Record<string, string | null> = {};
+          for (const d of pack.documents) {
+            if (existingDocs[d.ref]) documents[d.ref] = existingDocs[d.ref];
+            else if (uploaded.current[d.ref])
+              documents[d.ref] = uploaded.current[d.ref];
+            else if (prepared[d.ref]) {
+              setProgress("Original wird hochgeladen …");
+              const result = await adapter.call("upload", {
+                operation_id: operation.current,
+                file: prepared[d.ref],
+              });
+              if (!alive.current) return;
+              uploaded.current[d.ref] = result.id;
+              documents[d.ref] = result.id;
+            } else documents[d.ref] = null;
+          }
+          setProgress("Eintrag wird gespeichert …");
+          const result = await adapter.call("commit", {
+            operation_id: operation.current,
+            package: pack,
+            documents,
+            allow_missing: allowMissing,
+            confirm_reminders: confirmRules,
+            duplicate_override_reason: reason || null,
+            links: current.links,
+            ...(Object.keys(current.draft.capture).length
+              ? { capture: current.draft.capture }
+              : {}),
+          });
+          if (alive.current) await onSaved(result?.reused === true);
+        } catch (e) {
+          if (
+            e instanceof ServiceError &&
+            e.status < 500 &&
+            /Dubletten|Dublette|doppelt/i.test(e.message)
+          )
+            setDuplicateReview(true);
+          if (
+            e instanceof ServiceError &&
+            [400, 403, 404, 409, 422].includes(e.status)
+          )
+            setFrozen(false);
+          throw e;
+        }
+      });
+    } finally {
+      saveLock.current = false;
+      if (alive.current) {
+        setSaving(false);
+        setProgress("");
+      }
+    }
+  }
+  function selectKind(value: "work" | "expense" | "document") {
+    if (
+      (touched.current.size ||
+        p.work.some((w) => w.title) ||
+        p.expenses.some((e) => e.title)) &&
+      !confirm("Eingaben für eine andere Eintragsart verwerfen?")
+    )
+      return;
+    const next = { package: blankPackage(), capture: {} } as AssistantDraft;
+    next.package.documents = clone(p.documents);
+    if (value === "work")
+      next.package.work = [
+        { ...newWork(), document_refs: p.documents.map((d) => d.ref) },
+      ];
+    if (value === "expense")
+      next.package.expenses = [
+        { ...newExpense(), document_refs: p.documents.map((d) => d.ref) },
+      ];
+    touched.current.clear();
+    setSuggested(false);
+    setSuggestions([]);
+    setWarnings([]);
+    setConflicts([]);
+    setSources({});
+    setReason("");
+    setDuplicateReview(false);
+    setLinks({});
+    setKind(value);
+    changed(next);
+  }
+  function acceptConflict(conflict: DraftConflict) {
+    const next = clone(draft),
+      row = next.package[conflict.table].find((r) => r.ref === conflict.ref);
+    if (conflict.field === "$workshop")
+      next.capture.workshops_by_work_ref = {
+        ...next.capture.workshops_by_work_ref,
+        [conflict.ref]: conflict.proposed as string | null,
+      };
+    else if (row) (row as any)[conflict.field] = conflict.proposed;
+    changed(next);
+    setConflicts((old) => old.filter((c) => c !== conflict));
+  }
+  function suggestionLabels(table: "work" | "expenses", ref: string) {
+    return new Set(
+      suggestions
+        .filter(
+          (path) =>
+            path.startsWith(table + "." + ref + ".") &&
+            !touched.current.has(path),
+        )
+        .map((path) => {
+          const field = path.split(".").at(-1)!;
+          return field === "amount_cents"
+            ? "Rechnungsbetrag"
+            : field === "estimated_cost_cents"
+              ? "Kostenschätzung (keine Ausgabe)"
+              : fieldNames[field];
+        }),
+    );
+  }
   return (
-    <section
-      className={"panel capture" + (mode === "receipt" ? " capture-wide" : "")}
-    >
-      <div className="segmented">
-        <button
-          className={mode === "receipt" ? "selected" : ""}
-          onClick={() => setMode("receipt")}
-        >
-          Beleg einlesen
-        </button>
-        <button
-          className={mode === "manual" ? "selected" : ""}
-          onClick={() => setMode("manual")}
-        >
-          Manuell
-        </button>
-        <button
-          className={mode === "ai" ? "selected" : ""}
-          onClick={() => {
-            if (mode === "manual" && kind !== "document") {
-              assistManual();
-              return;
-            }
-            setMode("ai");
-            onAssistant?.();
-          }}
-        >
-          Mit KI
-        </button>
-      </div>
-      {mode === "receipt" ? (
-        <Suspense fallback={<p role="status">Belegerfassung wird geladen …</p>}>
-          <ReceiptCapture
-            s={s}
-            adapter={adapter}
-            run={run}
-            onDone={onReceiptDone}
-            busy={busy}
-            supported={supported}
-          />
-        </Suspense>
-      ) : mode === "ai" ? (
-        <>
-          <h2>Beschreiben oder diktieren</h2>
-          <p>
-            Arbeit, Vorhaben oder Ausgabe als Entwurf vorbereiten und
-            anschließend prüfen.
-          </p>
-          <button
-            className="button primary"
-            type="button"
-            onClick={() => onAssistant?.()}
-          >
-            Assistent öffnen
-          </button>
-        </>
-      ) : mode === "json" ? (
-        <>
-          <h2>JSON importieren</h2>
-          <p className="muted">
-            Füge ein Paket im JSON-Vertrag v1 ein. Im nächsten Schritt prüfst du
-            Einträge und ordnest Originaldateien zu.
-          </p>
-          <Field label="JSON-Paket">
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={13}
-              placeholder="JSON hier einfügen …"
-              spellCheck={false}
-            />
-          </Field>
-          <div className="button-group">
-            <Btn
-              primary
-              onClick={() => run(async () => onPreview(parseImport(text)))}
+    <section className="panel entry-editor" ref={host}>
+      {!(
+        p.reminders.length > 0 &&
+        !p.work.length &&
+        !p.expenses.length &&
+        !p.documents.length
+      ) && (
+        <div className="entry-heading">
+          <Field label="Eintragsart">
+            <select
+              aria-label="Eintragsart"
+              value={kind}
+              disabled={locked || reading}
+              onChange={(e) => selectKind(e.target.value as typeof kind)}
             >
-              Vorschau öffnen
-            </Btn>
-            <Field label="Oder JSON-Datei auswählen">
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file)
-                    run(async () => {
-                      if (file.size > 1024 * 1024)
-                        throw Error("JSON-Datei größer als 1 MiB.");
-                      setText(await file.text());
-                    });
+              <option value="work">Arbeit</option>
+              <option value="expense">Ausgabe / Einnahme</option>
+              <option value="document">Nur Dokument</option>
+            </select>
+          </Field>
+        </div>
+      )}
+      {onAssistant &&
+        !(p.reminders.length > 0 && !p.work.length && !p.expenses.length) && (
+          <button
+            type="button"
+            className="entry-assistant-link"
+            disabled={locked || reading}
+            onClick={() => onAssistant()}
+          >
+            Beschreiben oder diktieren – der Assistent füllt die Felder aus.
+          </button>
+        )}
+      <fieldset className="entry-fields" disabled={locked}>
+        {suggested && (
+          <span className="entry-suggested" role="status">
+            Belegvorschläge prüfen
+          </span>
+        )}
+        {p.work.map((work, index) => (
+          <section className="entry-card" key={work.ref}>
+            <div className="section-heading">
+              <h2>{p.work.length > 1 ? "Arbeit " + (index + 1) : "Arbeit"}</h2>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Arbeit aus Entwurf entfernen"
+                onClick={() => removeRow("work", work.ref)}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <SuggestedFields labels={suggestionLabels("work", work.ref)}>
+              <WorkFields
+                value={work}
+                onChange={(row) => rowChange("work", work.ref, row)}
+              />
+            </SuggestedFields>
+            {work.performed_by !== "unknown" && (
+              <WorkshopSelect
+                settings={s.Settings[0]}
+                value={draft.capture.workshops_by_work_ref?.[work.ref] ?? ""}
+                onChange={(value) => {
+                  const next = clone(draft);
+                  next.capture.workshops_by_work_ref = {
+                    ...next.capture.workshops_by_work_ref,
+                    [work.ref]: value || null,
+                  };
+                  changed(next);
                 }}
               />
-            </Field>
-            <Btn
-              onClick={() =>
-                download(text, "Fahrzeugakte-Entwurf.json", "application/json")
-              }
-            >
-              <Download size={16} /> Entwurf herunterladen
-            </Btn>
-          </div>
-        </>
-      ) : (
-        <>
-          <h2>Was möchtest du erfassen?</h2>
-          <form
-            onSubmit={submit}
-            ref={manualForm}
-            onChangeCapture={(e) => {
-              const el = e.target as HTMLInputElement;
-              if (el.name) touched.current.add(el.name);
-            }}
-          >
-            {kind !== "document" && (
-              <button type="button" className="button" onClick={assistManual}>
-                Mit KI ergänzen
-              </button>
             )}
-            <Field label="Eintragsart">
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                <option value="expense">Ausgabe / Einnahme</option>
-                <option value="work">Arbeit / Vorhaben</option>
-                <option value="document">Nur Dokument</option>
-              </select>
-            </Field>
-            <div className="form-grid">
-              <Field label="Titel">
-                <input
-                  name="title"
-                  required
-                  maxLength={500}
-                  placeholder={captureExample(kind, cat)}
-                />
+            <details className="entry-links" open={!!links[work.ref]?.length}>
+              <summary>Kosten und Rechnungen</summary>
+              <div className="button-group">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => addCost(work)}
+                >
+                  <Plus size={15} />
+                  Kosten hinzufügen
+                </button>
+              </div>
+              {p.expenses.length > 0 && (
+                <div className="field">
+                  <span>Ausgaben dieses Eintrags</span>
+                  {p.expenses.map((expense) => (
+                    <label className="check" key={expense.ref}>
+                      <input
+                        type="checkbox"
+                        checked={work.expense_refs.includes(expense.ref)}
+                        onChange={(e) =>
+                          rowChange("work", work.ref, {
+                            ...work,
+                            expense_refs: e.target.checked
+                              ? [...work.expense_refs, expense.ref]
+                              : work.expense_refs.filter(
+                                  (r) => r !== expense.ref,
+                                ),
+                          })
+                        }
+                      />
+                      {expense.title || "Neue Ausgabe"} ·{" "}
+                      {money(expense.amount_cents, expense.currency)}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <Field label="Bereits bezahlte Ausgabe">
+                <select
+                  multiple
+                  value={links[work.ref] ?? []}
+                  onChange={(e) => {
+                    setLinks({
+                      ...links,
+                      [work.ref]: Array.from(
+                        e.target.selectedOptions,
+                        (option) => option.value,
+                      ),
+                    });
+                    operation.current = crypto.randomUUID();
+                  }}
+                >
+                  <option value="" disabled>
+                    Keine zusätzliche Ausgabe
+                  </option>
+                  {s.Expenses.filter((e) => !e.voided).map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.title} · {money(e.amount_cents, e.currency)}
+                    </option>
+                  ))}
+                </select>
               </Field>
-              {kind === "expense" && (
-                <Field label="Kategorie">
+            </details>
+          </section>
+        ))}
+        {p.expenses.map((expense, index) => (
+          <details key={expense.ref} className="entry-card entry-cost" open>
+            <summary>
+              {kind === "work"
+                ? "Kosten"
+                : p.expenses.length > 1
+                  ? "Ausgabe " + (index + 1)
+                  : "Ausgabe / Einnahme"}
+            </summary>
+            <div className="entry-card-actions">
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Ausgabe aus Entwurf entfernen"
+                onClick={() => removeRow("expenses", expense.ref)}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <SuggestedFields labels={suggestionLabels("expenses", expense.ref)}>
+              <ExpenseFields
+                value={expense}
+                onChange={(row) => rowChange("expenses", expense.ref, row)}
+                prices={
+                  draft.capture.prices_by_expense_ref?.[expense.ref] ?? []
+                }
+                onPrices={(parts, prices) => {
+                  const next = clone(draft);
+                  next.package.expenses.find(
+                    (e) => e.ref === expense.ref,
+                  )!.items = parts;
+                  next.capture.prices_by_expense_ref = {
+                    ...next.capture.prices_by_expense_ref,
+                    [expense.ref]: prices,
+                  };
+                  touched.current.add("expenses." + expense.ref + ".items");
+                  changed(next);
+                }}
+              />
+            </SuggestedFields>
+          </details>
+        ))}
+        <details
+          className="entry-documents"
+          open={kind === "document" || p.documents.length > 0}
+        >
+          <summary>
+            <Paperclip size={16} />
+            Dokumente{p.documents.length ? " (" + p.documents.length + ")" : ""}
+          </summary>
+          <label className="button entry-file">
+            <FilePlus2 size={16} />
+            Dokument hinzufügen
+            <input
+              type="file"
+              aria-label="Dokument hinzufügen"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              multiple
+              disabled={locked || reading}
+              onChange={(e) => {
+                void chooseFiles(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {p.documents.map((doc) => (
+            <section className="entry-document" key={doc.ref}>
+              <div className="section-heading">
+                <strong>{doc.source_filename ?? doc.title}</strong>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={doc.title + " entfernen"}
+                  onClick={() => {
+                    controller.current?.abort();
+                    generation.current++;
+                    setReading(false);
+                    setProgress("");
+                    const next = clone(draft);
+                    next.package.documents = next.package.documents.filter(
+                      (d) => d.ref !== doc.ref,
+                    );
+                    [...next.package.work, ...next.package.expenses].forEach(
+                      (r) => {
+                        r.document_refs = r.document_refs.filter(
+                          (ref) => ref !== doc.ref,
+                        );
+                      },
+                    );
+                    setFiles((old) => {
+                      const result = { ...old };
+                      delete result[doc.ref];
+                      return result;
+                    });
+                    setExistingDocs((old) => {
+                      const result = { ...old };
+                      delete result[doc.ref];
+                      return result;
+                    });
+                    if (ocrRef === doc.ref) {
+                      setOcrRef("");
+                      previewUrls.current.forEach(URL.revokeObjectURL);
+                      previewUrls.current = [];
+                      setPreviews([]);
+                    }
+                    changed(next);
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              <div className="form-grid">
+                <Field label="Dokumenttitel">
+                  <input
+                    value={doc.title}
+                    onChange={(e) => {
+                      const next = clone(draft);
+                      next.package.documents.find(
+                        (d) => d.ref === doc.ref,
+                      )!.title = e.target.value;
+                      changed(next);
+                    }}
+                  />
+                </Field>
+                <Field label="Dokumenttyp">
                   <select
-                    name="category"
-                    value={cat}
-                    onChange={(e) => setCat(e.target.value)}
+                    value={doc.document_type}
+                    onChange={(e) => {
+                      const next = clone(draft);
+                      next.package.documents.find(
+                        (d) => d.ref === doc.ref,
+                      )!.document_type = e.target
+                        .value as typeof doc.document_type;
+                      changed(next);
+                    }}
                   >
-                    {categories.slice(0, 3).map((c) => (
-                      <option key={c}>{c}</option>
+                    {Object.entries(docTypes).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
                     ))}
-                    <optgroup label="Weitere Kategorien">
-                      {categories.slice(3).map((c) => (
-                        <option key={c}>{c}</option>
-                      ))}
-                    </optgroup>
+                  </select>
+                </Field>
+              </div>
+              {!files[doc.ref] && (
+                <Field label="Vorhandenes Original">
+                  <select
+                    value={existingDocs[doc.ref] ?? ""}
+                    onChange={(e) =>
+                      setExistingDocs({
+                        ...existingDocs,
+                        [doc.ref]: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">Datei hinzufügen</option>
+                    {s.Documents.filter((d) => !d.missing && !d.archived).map(
+                      (d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.title}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </Field>
               )}
-              {kind !== "document" && (
-                <>
-                  <Field
-                    label={
-                      kind === "work"
-                        ? "Tatsächliches Arbeitsdatum (optional)"
-                        : "Datum (optional)"
-                    }
-                    hint="Unbekannte historische Angaben leer lassen."
+              {[...p.work, ...p.expenses].length > 1 && (
+                <details>
+                  <summary>Verknüpfungen</summary>
+                  {(["work", "expenses"] as const).flatMap((table) =>
+                    p[table].map((row) => (
+                      <label key={row.ref} className="check">
+                        <input
+                          type="checkbox"
+                          checked={row.document_refs.includes(doc.ref)}
+                          onChange={(e) =>
+                            rowChange(table, row.ref, {
+                              ...row,
+                              document_refs: e.target.checked
+                                ? [...row.document_refs, doc.ref]
+                                : row.document_refs.filter(
+                                    (r) => r !== doc.ref,
+                                  ),
+                            } as any)
+                          }
+                        />
+                        {row.title || (table === "work" ? "Arbeit" : "Ausgabe")}
+                      </label>
+                    )),
+                  )}
+                </details>
+              )}
+              {fileUrls[doc.ref] && (
+                <a
+                  href={fileUrls[doc.ref]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Original ansehen
+                </a>
+              )}
+            </section>
+          ))}
+          {Object.keys(files).length > 0 && (
+            <div className="entry-ocr">
+              {Object.keys(files).length > 1 && (
+                <Field label="Dokument auslesen">
+                  <select
+                    value={ocrRef}
+                    disabled={reading}
+                    onChange={(e) => setOcrRef(e.target.value)}
                   >
-                    <input type="date" name="date" />
-                  </Field>
-                  <Field label="Kilometerstand (optional)">
-                    <input
-                      name="km"
-                      inputMode="decimal"
-                      placeholder="Unbekannt"
-                    />
-                  </Field>
-                </>
-              )}
-              {kind === "expense" && (
-                <>
-                  <Field
-                    label="Betrag (optional)"
-                    hint="Leer = unbekannt. 0 = ausdrücklich kostenfrei. Erstattungen negativ."
-                  >
-                    <input
-                      name="amount"
-                      inputMode="decimal"
-                      placeholder="0,00"
-                    />
-                  </Field>
-                  <Field label="Währung">
-                    <input
-                      name="currency"
-                      defaultValue="EUR"
-                      maxLength={3}
-                      pattern="[A-Z]{3}"
-                    />
-                  </Field>
-                </>
-              )}
-              {kind === "work" && (
-                <>
-                  <Field label="Art der Arbeit">
-                    <select name="work_kind">
-                      {Object.entries(workKinds).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Status">
-                    <select name="status">
-                      <option value="completed">Bestätigt durchgeführt</option>
-                      <option value="planned">Geplant</option>
-                    </select>
-                  </Field>
-                  <Field label="Durchgeführt von">
-                    <select
-                      name="performed"
-                      value={manualPerformed}
-                      onChange={(e) => {
-                        const value = e.target
-                          .value as WorkInput["performed_by"];
-                        setManualPerformed(value);
-                        setManualWorkshop(
-                          value === "self"
-                            ? (s.Settings[0].self_workshop_id ?? "")
-                            : "",
-                        );
-                      }}
-                    >
-                      <option value="unknown">Noch offen</option>
-                      <option value="self">Eigenleistung</option>
-                      <option value="workshop">Werkstatt</option>
-                    </select>
-                  </Field>
-                  <WorkshopSelect
-                    settings={s.Settings[0]}
-                    value={manualWorkshop}
-                    onChange={setManualWorkshop}
-                    disabled={!supported}
-                  />
-                </>
-              )}
-              {kind === "document" && (
-                <Field label="Dokumenttyp">
-                  <select name="doctype">
-                    {Object.entries(docTypes).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
+                    {Object.entries(files).map(([ref, file]) => (
+                      <option key={ref} value={ref}>
+                        {file.name}
                       </option>
                     ))}
                   </select>
                 </Field>
               )}
-            </div>
-            {kind === "expense" && cat === "Tanken" && (
-              <fieldset>
-                <legend>Tankvorgang</legend>
-                <div className="form-grid">
-                  <Field label="Liter">
-                    <input name="liters" inputMode="decimal" />
-                  </Field>
-                  <Field label="Kraftstoff">
-                    <select name="fuel_type">
-                      <option value="">Unbekannt</option>
-                      {["E5", "E10", "Diesel", "Andere"].map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Betankung">
-                    <select name="tank">
-                      <option value="unknown">Unbekannt</option>
-                      <option value="full">Vollgetankt</option>
-                      <option value="partial">Teilbetankung</option>
-                    </select>
-                  </Field>
-                  <Field label="Vorheriger Tankvorgang ausgelassen?">
-                    <select name="missed">
-                      <option value="unknown">Unbekannt</option>
-                      <option value="no">Nein, alle erfasst</option>
-                      <option value="yes">Ja, Lücke vorhanden</option>
-                    </select>
-                  </Field>
-                  <Field label="Tankstelle (optional)">
-                    <input name="station" />
-                  </Field>
-                </div>
-              </fieldset>
-            )}
-            {kind !== "document" && (
+              {reading ? (
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    generation.current++;
+                    controller.current?.abort();
+                    setReading(false);
+                    setProgress("");
+                  }}
+                >
+                  <Square size={16} />
+                  Abbrechen
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="button"
+                  disabled={!files[ocrRef]}
+                  onClick={() => void readDocument()}
+                >
+                  <FileSearch size={16} />
+                  Dokument auslesen
+                </button>
+              )}
               <details>
-                <summary>Weitere Details</summary>
-                <div className="form-grid">
-                  {kind === "expense" ? (
-                    <>
-                      <Field label="Händler / Werkstatt">
-                        <input name="vendor" />
-                      </Field>
-                      <Field label="Rechnungsnummer">
-                        <input name="invoice" />
-                      </Field>
-                      <label className="check">
-                        <input type="checkbox" name="income" /> Einnahme, z. B.
-                        Fahrzeugverkauf
-                      </label>
-                    </>
-                  ) : (
-                    <>
-                      <Field label="Geschätzte Kosten (nur Planung)">
-                        <input name="estimate" inputMode="decimal" />
-                      </Field>
-                      <Field label="Hersteller (Umbau)">
-                        <input name="manufacturer" />
-                      </Field>
-                      <Field label="Genehmigungsnummer (Umbau)">
-                        <input name="approval" />
-                      </Field>
-                      <Field label="Bestätigter Ein-/Ausbaustatus">
-                        <select name="mod_status">
-                          <option value="planned">Geplant</option>
-                          <option value="installed">Eingebaut</option>
-                          <option value="removed">Ausgebaut</option>
-                        </select>
-                      </Field>
-                    </>
-                  )}
-                  <Field label="Teil / Betriebsstoff">
-                    <input name="part_description" />
-                  </Field>
-                  <Field label="Teilenummer">
-                    <input name="part_number" />
-                  </Field>
-                  <Field label="Menge">
-                    <input name="quantity" inputMode="decimal" />
-                  </Field>
-                  <Field label="Einheit">
-                    <input name="unit" />
-                  </Field>
-                  <Field label="Bestätigte Freigabe / Spezifikation">
-                    <input name="spec" />
-                  </Field>
-                  <Field label="Notizen">
-                    <textarea name="notes" rows={3} />
-                  </Field>
-                </div>
+                <summary>Erkennungsoptionen</summary>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={forceOcr}
+                    disabled={reading}
+                    onChange={(e) => setForceOcr(e.target.checked)}
+                  />
+                  Scan-Erkennung erzwingen
+                </label>
               </details>
-            )}
-            <p className="muted">
-              Originale und bereits bezahlte Rechnungen verknüpfst du in der
-              Vorschau. Eine Arbeit erzeugt keine zusätzliche Ausgabe.
-            </p>
-            <Btn type="submit" primary>
-              Weiter zur Vorschau <ChevronRight size={16} />
-            </Btn>
-          </form>
-        </>
-      )}
-      <details className="capture-advanced">
-        <summary>Weitere Importmöglichkeiten</summary>
-        <button
-          className="button"
-          type="button"
-          onClick={() => setMode("json")}
-        >
-          JSON importieren
-        </button>
-      </details>
-    </section>
-  );
-}
-export function ImportPreview({
-  initial,
-  initialCapture,
-  initialLinks,
-  captureSupported,
-  s,
-  adapter,
-  run,
-  busy,
-  onDone,
-  onBack,
-  setProgress,
-  onAssistant,
-  onAssistantContext,
-}: {
-  initial: ImportPackage;
-  initialCapture?: CaptureMetadata;
-  initialLinks?: Record<string, string[]>;
-  captureSupported: boolean;
-  s: State;
-  adapter: Adapter | null;
-  run: Runner;
-  busy: boolean;
-  onDone: (reused?: boolean) => Promise<void>;
-  onBack: () => void;
-  setProgress: (x: string) => void;
-  onAssistant?: (seed?: AssistantSeed) => void;
-  onAssistantContext?: (factory: (() => AssistantSeed) | null) => void;
-}) {
-  const [capture, setCapture] = useState<CaptureMetadata>(initialCapture ?? {});
-  const [p, setP] = useState(clone(initial)),
-    [raw, setRaw] = useState(JSON.stringify(initial, null, 2)),
-    [files, setFiles] = useState<File[]>([]),
-    [mapping, setMapping] = useState<Record<string, number | null>>({}),
-    [existingDocs, setExistingDocs] = useState<Record<string, string>>({}),
-    [allowMissing, setAllowMissing] = useState(false),
-    [confirmRules, setConfirmRules] = useState(false),
-    [reason, setReason] = useState(""),
-    [links, setLinks] = useState<Record<string, string[]>>(
-      clone(initialLinks ?? {}),
-    ),
-    [operation, setOperation] = useState(crypto.randomUUID()),
-    [frozen, setFrozen] = useState(false),
-    [hashes, setHashes] = useState<Record<string, string>>({});
-  useEffect(() => {
-    onAssistantContext?.(
-      !p.documents.length && !p.reminders.length
-        ? () => {
-            if (frozen)
-              throw Error(
-                "Bitte den unbestätigten Speichervorgang zuerst prüfen.",
-              );
-            return { draft: { package: p, capture }, links };
-          }
-        : null,
-    );
-    return () => onAssistantContext?.(null);
-  });
-  function change(next: ImportPackage) {
-    if (frozen) return;
-    setP(next);
-    setRaw(JSON.stringify(next, null, 2));
-    setOperation(crypto.randomUUID());
-  }
-  async function selectFiles(input: File[]) {
-    const prepared = await Promise.all(input.map(prepareFile));
-    setFiles(input);
-    setMapping(autoMatch(p.documents, input));
-    setHashes(
-      Object.fromEntries(prepared.map((f, i) => [String(i), f.sha256])),
-    );
-    setOperation(crypto.randomUUID());
-  }
-  const conflicts = duplicates(
-    s,
-    p,
-    Object.fromEntries(
-      p.documents.flatMap((d) =>
-        mapping[d.ref] != null ? [[d.ref, hashes[String(mapping[d.ref])]]] : [],
-      ),
-    ),
-  );
-  const save = () =>
-    run(async () => {
-      if (!adapter) throw Error("Bitte anmelden.");
-      validatePackage(p);
-      validateCapture(capture, p, s);
-      if (Object.keys(capture).length && !captureSupported)
-        throw Error("Die benötigte Serverfunktion fehlt.");
-      if (p.reminders.length && !confirmRules)
-        throw Error("Bitte die neuen Erinnerungsregeln bestätigen.");
-      const missing = p.documents.filter(
-        (d) => mapping[d.ref] == null && !existingDocs[d.ref],
-      );
-      if (missing.length && !allowMissing)
-        throw Error(
-          "Noch fehlende Originale bitte zuordnen oder bewusst als fehlend bestätigen.",
-        );
-      setFrozen(true);
-      const docs: Record<string, string | null> = {};
-      let i = 0;
-      for (const d of p.documents) {
-        const index = mapping[d.ref];
-        if (existingDocs[d.ref]) {
-          docs[d.ref] = existingDocs[d.ref];
-          continue;
-        }
-        if (index == null) {
-          docs[d.ref] = null;
-          continue;
-        }
-        setProgress(
-          `Originale prüfen und hochladen: ${++i} von ${p.documents.length}`,
-        );
-        const f = await prepareFile(files[index]);
-        const u = await adapter.call("upload", {
-          operation_id: operation,
-          file: f,
-        });
-        docs[d.ref] = u.id;
-      }
-      setProgress("Einträge gemeinsam speichern und bestätigen …");
-      const result = await adapter.call("commit", {
-        operation_id: operation,
-        package: p,
-        documents: docs,
-        allow_missing: allowMissing,
-        confirm_reminders: confirmRules,
-        duplicate_override_reason: reason || null,
-        links,
-        ...(Object.keys(capture).length ? { capture } : {}),
-      });
-      await onDone(result.reused === true);
-    });
-  return (
-    <section className="panel">
-      <div className="section-heading">
-        <h2>Entwurf prüfen</h2>
-        {onAssistant && !p.documents.length && !p.reminders.length && (
-          <button
-            className="button"
-            type="button"
-            disabled={frozen || busy}
-            onClick={() =>
-              onAssistant({ draft: { package: p, capture }, links })
-            }
-          >
-            Mit KI ergänzen
-          </button>
-        )}
-        <Btn onClick={onBack} disabled={frozen}>
-          Zurück
-        </Btn>
-      </div>
-      <p>
-        {p.expenses.length} Ausgaben · {p.work.length} Arbeiten ·{" "}
-        {p.documents.length} Dokumente · {p.reminders.length} Regeln
-      </p>
-      {p.warnings.length > 0 && (
-        <div className="banner warning">
-          <ul>
-            {p.warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <fieldset disabled={frozen}>
-        <legend>Einträge vor dem Speichern bearbeiten</legend>
-        {p.expenses.map((e, i) => (
-          <div className="review-entry" key={e.ref}>
-            <div className="section-heading">
-              <strong>Ausgabe {i + 1}</strong>
-              <Btn
-                onClick={() => {
-                  const q = clone(p);
-                  q.expenses.splice(i, 1);
-                  q.work.forEach(
-                    (w) =>
-                      (w.expense_refs = w.expense_refs.filter(
-                        (r) => r !== e.ref,
-                      )),
-                  );
-                  change(q);
-                  setCapture((c) => {
-                    const next = clone(c);
-                    delete next.prices_by_expense_ref?.[e.ref];
-                    return next;
-                  });
-                }}
-              >
-                Ausgabe aus Entwurf entfernen
-              </Btn>
+              {previews.length > 0 && (
+                <div className="entry-scan-preview">
+                  {previews.length > 1 && (
+                    <div className="button-group">
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={page === 0}
+                        onClick={() => setPage((n) => n - 1)}
+                      >
+                        Zurück
+                      </button>
+                      <span>
+                        {page + 1} / {previews.length}
+                      </span>
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={page === previews.length - 1}
+                        onClick={() => setPage((n) => n + 1)}
+                      >
+                        Weiter
+                      </button>
+                    </div>
+                  )}
+                  <img src={previews[page]} alt="Belegvorschau" />
+                </div>
+              )}
             </div>
-            <ExpenseFields
-              value={e}
-              onChange={(next) => {
-                const q = clone(p);
-                q.expenses[i] = next;
-                change(q);
-              }}
-              prices={capture.prices_by_expense_ref?.[e.ref] ?? []}
-              onPrices={(parts, prices) => {
-                const q = clone(p);
-                q.expenses[i].items = parts;
-                change(q);
-                setCapture((c) => ({
-                  ...c,
-                  prices_by_expense_ref: {
-                    ...c.prices_by_expense_ref,
-                    [e.ref]: prices,
-                  },
-                }));
-              }}
-            />
-          </div>
-        ))}
-        {p.work.map((w, i) => (
-          <div className="review-entry" key={w.ref}>
-            <div className="section-heading">
-              <strong>Arbeit {i + 1}</strong>
-              <Btn
-                onClick={() => {
-                  const q = clone(p);
-                  q.work.splice(i, 1);
-                  q.reminders.forEach((r) => {
-                    if (r.basis_work_ref === w.ref) r.basis_work_ref = null;
-                  });
-                  change(q);
-                  setCapture((c) => {
-                    const next = clone(c);
-                    delete next.workshops_by_work_ref?.[w.ref];
-                    return next;
-                  });
-                  setLinks((c) => {
-                    const next = { ...c };
-                    delete next[w.ref];
-                    return next;
-                  });
-                }}
-              >
-                Arbeit aus Entwurf entfernen
-              </Btn>
-            </div>
-            <WorkFields
-              value={w}
-              onChange={(next) => {
-                const q = clone(p);
-                q.work[i] = next;
-                change(q);
-                if (next.performed_by === "self" && w.performed_by !== "self")
-                  setCapture((c) => ({
-                    ...c,
-                    workshops_by_work_ref: {
-                      ...c.workshops_by_work_ref,
-                      [w.ref]: s.Settings[0].self_workshop_id ?? null,
-                    },
-                  }));
-              }}
-            />
-            <div className="form-grid">
-              <Field label="Ausgaben aus diesem Entwurf verknüpfen">
-                <select
-                  multiple
-                  value={w.expense_refs}
-                  onChange={(x) => {
-                    const q = clone(p);
-                    q.work[i].expense_refs = Array.from(
-                      x.target.selectedOptions,
-                      (o) => o.value,
-                    );
-                    change(q);
-                  }}
-                >
-                  {p.expenses.map((e) => (
-                    <option key={e.ref} value={e.ref}>
-                      {e.title} · {money(e.amount_cents, e.currency)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Bereits bezahlte Ausgabe verknüpfen">
-                <select
-                  multiple
-                  value={links[w.ref] ?? []}
-                  onChange={(x) => {
-                    setLinks({
-                      ...links,
-                      [w.ref]: Array.from(
-                        x.target.selectedOptions,
-                        (o) => o.value,
-                      ),
-                    });
-                    setOperation(crypto.randomUUID());
-                  }}
-                >
-                  {s.Expenses.filter((e) => !e.voided).map((e) => (
-                    <option value={e.id} key={e.id}>
-                      {e.title} · {money(e.amount_cents, e.currency)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <WorkshopSelect
-              settings={s.Settings[0]}
-              value={capture.workshops_by_work_ref?.[w.ref] ?? ""}
-              disabled={!captureSupported}
-              onChange={(value) => {
-                setCapture({
-                  ...capture,
-                  workshops_by_work_ref: {
-                    ...capture.workshops_by_work_ref,
-                    [w.ref]: value || null,
-                  },
-                });
-                setOperation(crypto.randomUUID());
-              }}
-            />
-            <small>
-              {w.status === "planned" ? "Geplant" : "Bestätigt durchgeführt"} ·{" "}
-              {w.expense_refs.length} Rechnungen aus diesem Paket. Bestehende
-              Rechnung auswählen, wenn nur der Einbau nachgetragen wird.
-            </small>
-          </div>
-        ))}
-        <details>
-          <summary>Alle importierten Angaben bearbeiten</summary>
-          <p className="muted">
-            Erweiterte JSON-Ansicht für Positionen, Material und Regeln.
-            Änderungen mit „Übernehmen“ prüfen.
-          </p>
-          <textarea
-            aria-label="Importpaket als JSON"
-            placeholder="Vollständiges JSON-Paket nach Vertrag v1"
-            rows={16}
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            spellCheck={false}
-          />
-          <Btn onClick={() => run(async () => change(parseImport(raw)))}>
-            Änderungen übernehmen
-          </Btn>
+          )}
+          {missing.length > 0 && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={allowMissing}
+                onChange={(e) => setAllowMissing(e.target.checked)}
+              />
+              Original fehlt
+            </label>
+          )}
         </details>
-        <h3>Originaldateien zuordnen</h3>
-        <p className="muted">
-          PDF, JPEG, PNG oder WebP · maximal 4 MiB je Datei, höchstens 100
-          Dateien im Paket. Originale bleiben unverändert. Gleiche Inhalte
-          werden wiederverwendet.
-        </p>
-        <input
-          aria-label="Originaldateien auswählen"
-          type="file"
-          multiple
-          accept=".pdf,.jpg,.jpeg,.png,.webp"
-          onChange={(e) => {
-            const list = Array.from(e.target.files ?? []);
-            run(async () => {
-              if (list.length > 100)
-                throw Error("Bitte höchstens 100 Dateien auswählen.");
-              await selectFiles(list);
-            });
-          }}
-        />
-        {p.documents.map((d) => (
-          <div className="document-map" key={d.ref}>
-            <strong>{d.title}</strong>
-            <small>
-              Beobachteter Name: {d.source_filename ?? "unbekannt"}
-              {d.page_numbers ? " · Seiten " + d.page_numbers.join(", ") : ""}
-            </small>
-            <div className="form-grid">
-              <Field label="Ausgewählte Originaldatei">
-                <select
-                  value={mapping[d.ref] ?? ""}
-                  onChange={(e) => {
-                    setMapping({
-                      ...mapping,
-                      [d.ref]:
-                        e.target.value === "" ? null : Number(e.target.value),
-                    });
-                    setExistingDocs({ ...existingDocs, [d.ref]: "" });
-                    setOperation(crypto.randomUUID());
-                  }}
-                >
-                  <option value="">Nicht zugeordnet · Beleg fehlt</option>
-                  {files.map((f, i) => (
-                    <option key={i} value={i}>
-                      {i + 1}. {f.name} · {(f.size / 1024).toFixed(0)} KB ·{" "}
-                      {hashes[i]?.slice(0, 8)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Oder vorhandenes Original">
-                <select
-                  value={existingDocs[d.ref] ?? ""}
-                  onChange={(e) => {
-                    setExistingDocs({
-                      ...existingDocs,
-                      [d.ref]: e.target.value,
-                    });
-                    setMapping({ ...mapping, [d.ref]: null });
-                    setOperation(crypto.randomUUID());
-                  }}
-                >
-                  <option value="">Keines</option>
-                  {s.Documents.filter((x) => !x.missing).map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.title} · {x.source_filename}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            {files.filter((f) => f.name === d.source_filename).length > 1 && (
-              <p className="warning-text">
-                Mehrere Dateien mit diesem Namen. Bitte anhand Inhalt und
-                Prüfsumme bewusst zuordnen.
-              </p>
-            )}
-          </div>
-        ))}
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={allowMissing}
-            onChange={(e) => setAllowMissing(e.target.checked)}
-          />{" "}
-          Ich bestätige bewusst fehlende Originale. Diese bleiben als „Beleg
-          fehlt“ gekennzeichnet.
-        </label>
         {p.reminders.length > 0 && (
-          <>
-            <h3>Neue Fälligkeiten</h3>
-            {p.reminders.map((r) => (
-              <p key={r.ref}>
-                {r.title} · {date(r.due_date)} / {r.due_odometer_km ?? "offen"}{" "}
-                km · E-Mail:{" "}
-                {r.email_enabled === true
-                  ? "angefordert"
-                  : r.email_enabled === false
-                    ? "aus"
-                    : "offen, bleibt aus"}
+          <section className="entry-card">
+            <h2>Wartungsregeln</h2>
+            {p.reminders.map((rule) => (
+              <p key={rule.ref}>
+                {rule.title} · {date(rule.due_date)} ·{" "}
+                {rule.due_odometer_km ?? "–"} km
               </p>
             ))}
             <label className="check">
@@ -1051,72 +1066,107 @@ export function ImportPreview({
                 type="checkbox"
                 checked={confirmRules}
                 onChange={(e) => setConfirmRules(e.target.checked)}
-              />{" "}
-              Diese neuen Wartungsregeln sind geprüft und bestätigt.
+              />
+              Wartungsregeln bestätigen
             </label>
-          </>
+          </section>
         )}
-        {conflicts.length > 0 && (
-          <div className="banner warning">
-            Mögliche bereits erfasste Rechnung:{" "}
-            {conflicts.map((x) => x.title).join(", ")}. Vor erneutem Buchen
-            prüfen.
-          </div>
-        )}
-        <Field label="Begründung für eine bewusst getrennte ähnliche Buchung (optional)">
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="z. B. Zwei getrennte Rechnungen mit unterschiedlichen Rechnungsnummern"
-          />
-        </Field>
-      </fieldset>
-      {frozen && (
-        <div className="banner warning">
-          <div>
-            Der Speichervorgang ist festgelegt. Falls keine Bestätigung ankam,
-            „Speichern wiederholen“ verwenden. Dateiuploads und Buchungen werden
-            wiederverwendet.
-            <Btn
-              onClick={() =>
-                run(async () => {
-                  if (!adapter) throw Error("Bitte erneut verbinden.");
-                  const fresh = await adapter.call("read");
-                  if (
-                    fresh.state.Operations.some(
-                      (o: any) =>
-                        o.id === operation && o.status === "committed",
-                    )
-                  )
-                    await onDone();
-                  else {
-                    setFrozen(false);
-                    setOperation(crypto.randomUUID());
-                  }
-                })
-              }
+        <details>
+          <summary>Weitere Einträge</summary>
+          <div className="button-group">
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                const next = clone(draft);
+                next.package.work.push(newWork("work_" + crypto.randomUUID()));
+                changed(next);
+              }}
             >
-              Vorgang prüfen und Bearbeitung freigeben
-            </Btn>
+              Arbeit hinzufügen
+            </button>
+            <button type="button" className="button" onClick={() => addCost()}>
+              Ausgabe hinzufügen
+            </button>
           </div>
-        </div>
+        </details>
+        {(possibleDuplicates.length > 0 || duplicateReview || reason) && (
+          <Field label="Mögliche Dublette – Begründung">
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Grund für eine getrennte Buchung"
+            />
+          </Field>
+        )}
+        {conflicts.map((conflict, i) => (
+          <div className="banner warning" key={i}>
+            <span>
+              {fieldNames[conflict.field] ?? conflict.field}:{" "}
+              {display(
+                conflict.field,
+                conflict.current,
+                s.Settings[0].workshops ?? [],
+              )}{" "}
+              →{" "}
+              {display(
+                conflict.field,
+                conflict.proposed,
+                s.Settings[0].workshops ?? [],
+              )}
+            </span>
+            <button
+              type="button"
+              className="button"
+              onClick={() => acceptConflict(conflict)}
+            >
+              Vorschlag übernehmen
+            </button>
+          </div>
+        ))}
+      </fieldset>
+      {warnings.length > 0 && (
+        <details className="receipt-warnings" open>
+          <summary>Erkennung prüfen</summary>
+          <ul>
+            {warnings.map((warning, i) => (
+              <li key={i}>{warning}</li>
+            ))}
+          </ul>
+        </details>
       )}
-      <div className="button-group">
-        <Btn primary disabled={busy} onClick={save}>
-          {frozen ? "Speichern wiederholen" : "Geprüft speichern"}
-        </Btn>
-        <Btn
-          onClick={() =>
-            download(
-              JSON.stringify(p, null, 2),
-              "Fahrzeugakte-Entwurf.json",
-              "application/json",
-            )
-          }
-        >
-          <Download size={16} /> Entwurf sichern
-        </Btn>
-      </div>
+      {Object.keys(sources).length > 0 && (
+        <details className="entry-evidence">
+          <summary>Erkennungsdetails</summary>
+          <dl>
+            {Object.entries(sources).map(([field, source]) => (
+              <div key={field}>
+                <dt>{fieldNames[field] ?? field}</dt>
+                <dd>{source}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
+      {readError && (
+        <p className="banner warning" role="alert">
+          {readError}
+        </p>
+      )}
+      {progress && <p role="status">{progress}</p>}
+      {frozen && !saving && (
+        <p className="banner warning">
+          Speichern noch nicht bestätigt. Bitte denselben Vorgang wiederholen.
+        </p>
+      )}
+      <button
+        type="button"
+        className="button primary entry-save"
+        disabled={busy || saving || reading || choosing}
+        onClick={() => void save()}
+      >
+        {frozen ? "Speichern wiederholen" : "Speichern"}
+      </button>
     </section>
   );
 }

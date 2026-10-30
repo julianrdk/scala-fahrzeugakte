@@ -161,16 +161,19 @@ function usePhotos() {
 export function Photo({
   doc,
   priority = false,
+  natural = false,
 }: {
   doc: Doc;
   priority?: boolean;
+  natural?: boolean;
 }) {
   const { session, show } = usePhotos(),
     host = useRef<HTMLDivElement>(null),
     [visible, setVisible] = useState(priority),
     [url, setUrl] = useState(""),
     [error, setError] = useState(false),
-    [retry, setRetry] = useState(0);
+    [retry, setRetry] = useState(0),
+    [ratio, setRatio] = useState(1.5);
   useEffect(() => {
     if (visible || !host.current) return;
     const observer = new IntersectionObserver(
@@ -203,7 +206,15 @@ export function Photo({
     };
   }, [session, doc.id, doc.sha256, visible, retry]);
   return (
-    <div className="photo-frame" ref={host}>
+    <div
+      className={"photo-frame" + (natural ? " natural-photo" : "")}
+      ref={host}
+      style={
+        natural
+          ? { aspectRatio: String(ratio), maxWidth: ratio * 340 + "px" }
+          : undefined
+      }
+    >
       {error ? (
         <button
           type="button"
@@ -224,7 +235,18 @@ export function Photo({
           aria-label={doc.title + " groß ansehen"}
         >
           {url ? (
-            <img src={url} alt={doc.title} decoding="async" />
+            <img
+              src={url}
+              alt={doc.title}
+              decoding="async"
+              onLoad={(e) => {
+                if (natural && e.currentTarget.naturalHeight)
+                  setRatio(
+                    e.currentTarget.naturalWidth /
+                      e.currentTarget.naturalHeight,
+                  );
+              }}
+            />
           ) : (
             <span className="photo-placeholder" role="status">
               Foto wird geladen …

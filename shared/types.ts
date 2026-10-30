@@ -165,6 +165,7 @@ export type Vehicle = Meta & {
   purchase_odometer: number | null;
   fuel_type: string | null;
   photo_id: string | null;
+  accent_color?: string | null;
 };
 export type Odometer = Meta & {
   date: string;
@@ -176,7 +177,8 @@ export type Settings = Meta & {
   hidden_categories: Category[];
   external_fuel_url: string;
   email_enabled: boolean;
-  prompt_templates: Record<string, string>;
+  /** Accepted only when reading older backups. */
+  prompt_templates?: Record<string, string>;
   backup_retention: number;
   workshops?: Workshop[];
   self_workshop_id?: string | null;

@@ -79,12 +79,6 @@ export function PositionEditor({
       <legend>
         {showPrices ? "Rechnungspositionen" : "Teile und Material"}
       </legend>
-      {showPrices && (
-        <p className="muted">
-          Einzelpreise sind Zusatzangaben. Die Kostenübersicht verwendet
-          ausschließlich den Rechnungsbetrag.
-        </p>
-      )}
       {parts.map((row, i) => (
         <div className="position-row" key={i}>
           <div className="position-heading">

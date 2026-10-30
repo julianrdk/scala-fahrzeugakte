@@ -21,23 +21,8 @@ import {
   type State,
   type Table,
   type UploadFile,
-  type Vehicle,
   type Work,
 } from "./types";
-export const defaultResearchTemplate =
-  "Recherchiere aktuelle Angebote für {{arbeit}} an {{fahrzeug}}. Bestätige zuerst technische Eignung, erforderliche Freigaben und benötigte Menge. Vergleiche Gesamtpreise einschließlich Versand, Lieferzeit und nachvollziehbare Quellen. Empfehlungen erst nach Prüfung der Eignung. Unbekannte Daten offen lassen.\nBestätigte Angaben: {{material}}\nHinweise: {{notizen}}";
-export const researchTemplates: Record<string, string> = {
-  oil_filter:
-    defaultResearchTemplate +
-    "\nÖlmenge, bestätigte Herstellerfreigabe und passende Filterausführung zuerst klären.",
-  spark_plugs:
-    defaultResearchTemplate +
-    "\nPassende Zündkerzenausführung anhand bestätigter Motordaten zuerst klären.",
-  tires:
-    defaultResearchTemplate +
-    "\nFreigegebene Reifengröße sowie Last- und Geschwindigkeitsindex anhand bestätigter Unterlagen zuerst klären.",
-  general: defaultResearchTemplate,
-};
 export const MAX_FILE = 4 * 1024 * 1024,
   MAX_PACKAGE = 1024 * 1024;
 export const mimeTypes = [
@@ -225,7 +210,6 @@ export function emptyState(at = new Date().toISOString()): State {
     hidden_categories: [],
     external_fuel_url: "https://www.clever-tanken.de/",
     email_enabled: false,
-    prompt_templates: { ...researchTemplates },
     backup_retention: 14,
   });
   return s;
@@ -435,44 +419,6 @@ export function completeReminder(
   r.voided = !r.due_date && r.due_odometer_km === null;
   r.revision++;
   r.updated_at = at;
-}
-export const templateKey = (title: string) =>
-  /öl|oel|filter/i.test(title)
-    ? "oil_filter"
-    : /zünd|zuend|spark/i.test(title)
-      ? "spark_plugs"
-      : /reifen|räder|raeder/i.test(title)
-        ? "tires"
-        : "general";
-export function researchPrompt(
-  r: Pick<Reminder, "title" | "work_type" | "notes">,
-  v: Vehicle,
-  work?: Work,
-  template?: string,
-) {
-  const material =
-    work?.parts
-      ?.map((p) =>
-        [p.description, p.part_number, p.specification, p.quantity, p.unit]
-          .filter((x) => x !== null && x !== undefined)
-          .join(" · "),
-      )
-      .join("\n") || "Material, Menge und Freigaben offen.";
-  return (
-    template ||
-    researchTemplates[templateKey(r.title)] ||
-    defaultResearchTemplate
-  )
-    .replaceAll("{{arbeit}}", r.title)
-    .replaceAll(
-      "{{fahrzeug}}",
-      [v.manufacturer, v.model, v.engine || "Motor offen"].join(" "),
-    )
-    .replaceAll("{{material}}", material)
-    .replaceAll(
-      "{{notizen}}",
-      r.notes || "Keine weiteren bestätigten Angaben.",
-    );
 }
 export function autoMatch(
   documents: ImportPackage["documents"],
@@ -796,13 +742,17 @@ export function validateState(s: State) {
     setting.backup_retention < 1 ||
     setting.backup_retention > 90 ||
     !/^https:\/\//.test(setting.external_fuel_url) ||
-    typeof setting.prompt_templates !== "object" ||
-    Object.values(setting.prompt_templates).some(
-      (x) => typeof x !== "string" || x.length > 10000,
-    )
+    (setting.prompt_templates !== undefined &&
+      (!setting.prompt_templates ||
+        typeof setting.prompt_templates !== "object" ||
+        Object.values(setting.prompt_templates).some(
+          (x) => typeof x !== "string" || x.length > 10000,
+        )))
   )
     fail("Ungültige Einstellungen.");
   for (const v of s.Vehicles) {
+    if (v.accent_color != null && !/^#[0-9a-f]{6}$/i.test(v.accent_color))
+      fail("Ungültige Akzentfarbe.");
     for (const k of [
       "manufacturer",
       "model",
@@ -969,12 +919,12 @@ const patchFields: Partial<Record<Table, string[]>> = {
     "purchase_odometer",
     "fuel_type",
     "photo_id",
+    "accent_color",
   ],
   Settings: [
     "hidden_categories",
     "external_fuel_url",
     "email_enabled",
-    "prompt_templates",
     "backup_retention",
     "workshops",
     "self_workshop_id",

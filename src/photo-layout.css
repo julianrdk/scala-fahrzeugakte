@@ -1,0 +1,67 @@
+.vehicle-hero.vehicle-pinboard.has-photos {
+  min-height: 0;
+  align-items: center;
+}
+.pinboard-board {
+  min-height: 0;
+  align-items: center;
+  width: 100%;
+}
+.pinboard-main {
+  height: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.pinboard-main > .photo-frame {
+  height: auto;
+  min-height: 0;
+  transform: none;
+}
+.pinboard-thumbs {
+  display: block;
+  columns: 3;
+  column-gap: 10px;
+}
+.pinboard-thumbs.count-1,
+.pinboard-thumbs.count-2 {
+  columns: 1;
+}
+.pinboard-thumbs.count-3,
+.pinboard-thumbs.count-4 {
+  columns: 2;
+}
+.pinboard-thumbs > .natural-photo {
+  break-inside: avoid;
+  margin: 0 auto 10px;
+}
+.natural-photo {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+.pinboard-board.count-1 .pinboard-main {
+  max-width: 100%;
+}
+@media (max-width: 700px) {
+  .vehicle-pinboard .pinboard-board {
+    min-height: 0;
+  }
+  .pinboard-main > .photo-frame {
+    min-height: 0;
+  }
+  .pinboard-thumbs {
+    columns: 1;
+  }
+  .vehicle-hero.vehicle-pinboard.has-photos {
+    align-items: stretch;
+  }
+}
+@media (max-width: 440px) {
+  .pinboard-thumbs.count-3 {
+    columns: 1;
+  }
+  .pinboard-main > .photo-frame {
+    min-height: 0;
+  }
+}

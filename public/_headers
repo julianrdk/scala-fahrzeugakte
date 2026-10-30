@@ -2,7 +2,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(self), geolocation=(self)
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://clerk.jurodak.com https://challenges.cloudflare.com https://*.protect.clerk.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://img.clerk.com https://*.tile.openstreetmap.org; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://clerk.jurodak.com https://*.protect.clerk.com wss://*.protect.clerk.com; frame-src https://challenges.cloudflare.com https://clerk.jurodak.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://clerk.jurodak.com https://challenges.cloudflare.com https://*.protect.clerk.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://img.clerk.com https://tile.openstreetmap.org; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://clerk.jurodak.com https://*.protect.clerk.com wss://*.protect.clerk.com; frame-src https://challenges.cloudflare.com https://clerk.jurodak.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 /
   Cache-Control: no-cache
 /index.html

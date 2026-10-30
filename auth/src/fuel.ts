@@ -171,6 +171,15 @@ async function postalPoint(
   await save(env, key, point, 86400000);
   return point;
 }
+export async function resolveFuelLocation(
+  env: FuelEnv,
+  raw: unknown,
+): Promise<FuelPoint> {
+  const input = queryInput(raw);
+  if (!("postalCode" in input))
+    throw new FuelError(400, "Bitte eine fünfstellige deutsche PLZ eingeben.");
+  return postalPoint(env, input.postalCode);
+}
 function text(value: unknown, max = 180) {
   return typeof value === "string"
     ? value.trim().slice(0, max)
@@ -262,7 +271,7 @@ export async function searchFuel(
         : {
             lat: Math.round(input.lat * 1000) / 1000,
             lng: Math.round(input.lng * 1000) / 1000,
-            label: "Mein Standort",
+            label: "Suchbereich",
           };
     const key = await locationKey(center),
       stored = await cached<Pick<FuelResult, "stations" | "fetchedAt">>(

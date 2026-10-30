@@ -22,6 +22,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 import { emptyState, validatePackage } from "../shared/logic";
 import type {
@@ -52,16 +53,16 @@ import { PrintView } from "./PrintView";
 import { SettingsView } from "./SettingsView";
 import { VehicleSetup } from "./VehicleSetup";
 import type { AssistantDraft, AssistantSeed } from "../shared/assistant";
+import type { EntryApply } from "./views/Capture";
 import "./assistant.css";
+import { vehicleTheme } from "./theme";
+import "./theme.css";
 const Assistant = lazy(() =>
   import("./Assistant").then((m) => ({ default: m.Assistant })),
 );
 import { Btn, Empty, today, type Runner } from "./view-support";
 const Capture = lazy(() =>
   import("./views/Capture").then((m) => ({ default: m.Capture })),
-);
-const ImportPreview = lazy(() =>
-  import("./views/Capture").then((m) => ({ default: m.ImportPreview })),
 );
 import { Dashboard } from "./views/Dashboard";
 import { HistoryView } from "./views/History";
@@ -117,13 +118,13 @@ function VehicleApp({
     dirty = useRef(false),
     aiDirty = useRef(false),
     assistantContext = useRef<(() => AssistantSeed) | null>(null),
+    assistantApply = useRef<EntryApply | null>(null),
     assistantBaseline = useRef<string | null>(null),
     routeRequest = useRef(0);
   const [aiLoaded, setAiLoaded] = useState(false),
     [aiOpen, setAiOpen] = useState(false),
     [aiSeed, setAiSeed] = useState<AssistantSeed | null>(null),
-    [aiReset, setAiReset] = useState(0),
-    [previewEpoch, setPreviewEpoch] = useState(0);
+    [aiReset, setAiReset] = useState(0);
   const openAssistant = (seed?: AssistantSeed) => {
     const explicit = !!seed;
     try {
@@ -158,6 +159,9 @@ function VehicleApp({
     },
     [],
   );
+  const registerAssistantApply = useCallback((apply: EntryApply | null) => {
+    assistantApply.current = apply;
+  }, []);
   const [needsLogin, setNeedsLogin] = useState(false),
     [accountEpoch] = useState(0),
     [config] = useState<Config | null>(external?.config ?? null),
@@ -326,7 +330,6 @@ function VehicleApp({
     capture?: CaptureMetadata,
     links?: Record<string, string[]>,
   ) => {
-    setPreviewEpoch((n) => n + 1);
     setPreviewCapture(capture);
     setPreviewLinks(links);
     setPreview(validatePackage(p));
@@ -391,7 +394,10 @@ function VehicleApp({
         String(accountEpoch) + ":" + (adapter.accountId ?? adapter.kind)
       }
     >
-      <>
+      <div
+        className="vehicle-theme"
+        style={vehicleTheme(vehicle.accent_color) as CSSProperties}
+      >
         <a className="skip" href="#main">
           Zum Inhalt
         </a>
@@ -432,7 +438,7 @@ function VehicleApp({
             <header className="topbar">
               <div className="vehicle-switch">
                 <label>
-                  Fahrzeug{" "}
+                  <span className="vehicle-switch-label">Fahrzeug</span>
                   <select
                     aria-label="Fahrzeug wechseln"
                     disabled={busy}
@@ -451,13 +457,15 @@ function VehicleApp({
                 </label>
                 {external && (
                   <button
-                    className="button"
+                    className="icon-button"
+                    title="Fahrzeug hinzufügen"
+                    aria-label="Fahrzeug hinzufügen"
                     disabled={busy}
                     onClick={() => {
                       if (discard()) setAdding(true);
                     }}
                   >
-                    Fahrzeug hinzufügen
+                    <Plus size={19} />
                   </button>
                 )}
               </div>
@@ -493,17 +501,11 @@ function VehicleApp({
                 <div>
                   <h1>{active}</h1>
                 </div>
-                {!vehicle.archived && (
-                  <a className="button primary" href="#/erfassen">
-                    <Plus size={18} /> Eintrag hinzufügen
-                  </a>
-                )}
               </div>
               {!online && (
                 <div className="banner warning" role="status">
                   Offline · Der angezeigte Stand wurde nicht erneut bestätigt.
-                  Eingaben bleiben in diesem Fenster. Entwürfe kannst du im
-                  Erfassungsbereich herunterladen.
+                  Eingaben bleiben in diesem Fenster.
                 </div>
               )}
               {adapter?.kind === "test" && (
@@ -592,57 +594,36 @@ function VehicleApp({
                   openDocument={openDocument}
                 />
               )}
-              {path === "/erfassen" &&
-                !vehicle.archived &&
-                (preview ? (
-                  <ImportPreview
-                    key={previewEpoch}
-                    initial={preview}
-                    initialCapture={previewCapture}
-                    initialLinks={previewLinks}
-                    captureSupported={
-                      adapter.kind === "test" || status.features?.capture === 1
-                    }
-                    s={s}
-                    adapter={adapter}
-                    run={run}
-                    busy={busy}
-                    onDone={async (reused) => {
-                      await refresh();
-                      setPreview(null);
-                      dirty.current = false;
-                      setAiReset((n) => n + 1);
-                      assistantBaseline.current = null;
-                      setNotice(
-                        reused
-                          ? "Dieses Paket war bereits gespeichert. Vorhandene Einträge wurden geladen."
-                          : "Einträge bestätigt gespeichert.",
-                      );
-                      location.hash = "/historie";
-                    }}
-                    onBack={() => setPreview(null)}
-                    setProgress={setProgress}
-                    onAssistant={openAssistant}
-                    onAssistantContext={registerAssistantContext}
-                  />
-                ) : (
-                  <Capture
-                    onAssistant={openAssistant}
-                    onAssistantContext={registerAssistantContext}
-                    s={s}
-                    adapter={adapter}
-                    onPreview={startPreview}
-                    run={run}
-                    busy={busy}
-                    supported={
-                      adapter.kind === "test" || status.features?.capture === 1
-                    }
-                    onReceiptDone={async () => {
-                      await refresh();
-                      location.hash = "/historie";
-                    }}
-                  />
-                ))}
+              {path === "/erfassen" && !vehicle.archived && (
+                <Capture
+                  initial={preview ?? undefined}
+                  initialCapture={previewCapture}
+                  initialLinks={previewLinks}
+                  supported={
+                    adapter.kind === "test" || status.features?.capture === 1
+                  }
+                  s={s}
+                  adapter={adapter}
+                  run={run}
+                  busy={busy}
+                  onSaved={async (reused) => {
+                    await refresh();
+                    setPreview(null);
+                    dirty.current = false;
+                    setAiReset((n) => n + 1);
+                    assistantBaseline.current = null;
+                    setNotice(
+                      reused
+                        ? "Dieses Paket war bereits gespeichert. Vorhandene Einträge wurden geladen."
+                        : "Einträge bestätigt gespeichert.",
+                    );
+                    location.hash = "/historie";
+                  }}
+                  onAssistant={openAssistant}
+                  onAssistantContext={registerAssistantContext}
+                  onAssistantApply={registerAssistantApply}
+                />
+              )}
               {isVehicle && (
                 <>
                   <nav className="tabs" aria-label="Fahrzeugbereiche">
@@ -845,7 +826,9 @@ function VehicleApp({
                       draft,
                       links: links ?? {},
                     });
-                    startPreview(draft.package, draft.capture, links);
+                    if (assistantApply.current)
+                      assistantApply.current(draft, links);
+                    else startPreview(draft.package, draft.capture, links);
                   }}
                   onDirty={(value) => {
                     aiDirty.current = value;
@@ -913,7 +896,7 @@ function VehicleApp({
             includeCost={includeCost}
           />
         </div>
-      </>
+      </div>
     </PhotoProvider>
   );
 }

@@ -1,0 +1,128 @@
+.vehicle-theme .nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.vehicle-theme .nav-item:hover,
+.vehicle-theme .button:hover {
+  background: var(--accent-soft);
+}
+.vehicle-theme .button {
+  color: var(--accent-ink);
+  border-color: var(--accent-line);
+}
+.vehicle-theme .button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.vehicle-theme .button.primary:hover {
+  background: var(--accent-hover);
+}
+.vehicle-theme :is(button, a, input, select, textarea, summary):focus-visible {
+  outline-color: var(--accent);
+}
+.vehicle-theme .vehicle-hero,
+.vehicle-theme .vehicle-pinboard.has-photos {
+  background: var(--accent-surface);
+  border-color: var(--accent-line);
+}
+.vehicle-theme .vehicle-hero :is(a, .hero-eyebrow),
+.vehicle-theme .vehicle-hero-info .hero-gallery-link {
+  color: var(--accent-ink);
+}
+.vehicle-theme .brand,
+.vehicle-theme .sidebar-bottom a,
+.vehicle-theme .tabs a.selected {
+  color: var(--accent-ink);
+}
+.vehicle-theme .tabs a.selected {
+  border-color: var(--accent);
+}
+.vehicle-theme .brand-mark,
+.vehicle-theme .ai-launcher {
+  background: var(--accent);
+}
+.vehicle-theme .row-icon,
+.vehicle-theme .ai-message.user,
+.vehicle-theme .ai-draft {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.vehicle-theme .fuel-station.selected,
+.vehicle-theme .fuel-map-marker {
+  border-color: var(--accent);
+}
+.vehicle-theme .fuel-station.selected {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.vehicle-theme .fuel-station-prices strong,
+.vehicle-theme .fuel-map-marker {
+  color: var(--accent-ink);
+}
+.vehicle-theme .progress {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.vehicle-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.vehicle-color {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #bec5c1;
+  padding: 0;
+  min-height: 32px;
+}
+.vehicle-color[aria-pressed="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.vehicle-colors input[type="color"] {
+  width: 48px;
+  padding: 4px;
+  min-height: 40px;
+  cursor: pointer;
+}
+.vehicle-colors legend {
+  margin-bottom: 14px;
+}
+.fuel-map-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 27px;
+  line-height: 1;
+  color: #263a33;
+  text-shadow: 0 0 3px #fff;
+  pointer-events: none;
+  z-index: 1;
+}
+.fuel-map-notice .button {
+  margin-left: 8px;
+}
+@media (max-width: 650px) {
+  .vehicle-theme .vehicle-switch {
+    flex-wrap: nowrap;
+  }
+  .vehicle-theme .vehicle-switch label {
+    flex: 1;
+    min-width: 0;
+  }
+  .vehicle-theme .vehicle-switch-label {
+    display: none;
+  }
+  .vehicle-theme .vehicle-switch select {
+    width: 100%;
+    min-width: 0;
+  }
+  .vehicle-theme .vehicle-switch > .icon-button {
+    flex-shrink: 0;
+  }
+}

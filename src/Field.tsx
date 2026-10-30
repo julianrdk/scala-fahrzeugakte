@@ -1,5 +1,7 @@
 import {
   cloneElement,
+  createContext,
+  useContext,
   isValidElement,
   type InputHTMLAttributes,
   type ReactNode,
@@ -94,8 +96,6 @@ const examples: Record<string, string> = {
   Stichwort: "z. B. Ölwechsel oder Rechnungsnummer",
   Suchen: "z. B. Rechnung, ABE oder Ölfilter",
   "Externe Tankpreis-Seite": "z. B. https://www.clever-tanken.de/",
-  Textvorlage:
-    "z. B. Welche Angaben fehlen für {{arbeit}} an meinem {{fahrzeug}}?",
 };
 export function captureExample(kind: string, category: string) {
   if (kind === "work") return "z. B. Ölfilter gewechselt";
@@ -112,6 +112,20 @@ export function captureExample(kind: string, category: string) {
   return titles[category] ?? "z. B. Fahrzeugzubehör gekauft";
 }
 
+const SuggestionContext = createContext<ReadonlySet<string>>(new Set());
+export function SuggestedFields({
+  labels,
+  children,
+}: {
+  labels: ReadonlySet<string>;
+  children: ReactNode;
+}) {
+  return (
+    <SuggestionContext.Provider value={labels}>
+      {children}
+    </SuggestionContext.Provider>
+  );
+}
 export function Field({
   label,
   children,
@@ -121,6 +135,7 @@ export function Field({
   children: ReactNode;
   hint?: string;
 }) {
+  const suggested = useContext(SuggestionContext).has(label);
   let control = children;
   if (
     isValidElement<InputHTMLAttributes<HTMLInputElement>>(children) &&
@@ -141,7 +156,10 @@ export function Field({
       control = cloneElement(children, { placeholder: example });
   }
   return (
-    <label className="field">
+    <label
+      className={"field" + (suggested ? " field-suggested" : "")}
+      title={suggested ? "Belegvorschlag – bitte prüfen" : undefined}
+    >
       <span>{label}</span>
       {control}
       {hint && <small>{hint}</small>}

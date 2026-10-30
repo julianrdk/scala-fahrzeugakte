@@ -1,26 +1,10 @@
-import {
-  ArrowUpRight,
-  Fuel,
-  LocateFixed,
-  MapPin,
-  RefreshCw,
-  Search,
-} from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { ArrowUpRight, Fuel, LocateFixed, MapPin, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FuelSearchError,
   fuelPrice,
   matchingStations,
-  type FuelGrade,
   type FuelPoint,
-  type FuelQuery,
   type FuelResult,
   type FuelService,
   type FuelStatus,
@@ -30,12 +14,7 @@ import "./fuel.css";
 import { FuelMap } from "./FuelMap";
 
 const germany: FuelPoint = { lat: 51.16, lng: 10.45, label: "Deutschland" };
-const gradeLabels = {
-  all: "Alle Kraftstoffe",
-  e10: "Super E10",
-  e5: "Super E5",
-  diesel: "Diesel",
-};
+const grades = { e5: "Super E5", e10: "Super E10", diesel: "Diesel" } as const;
 export function FuelView({
   service,
   externalUrl,
@@ -49,29 +28,29 @@ export function FuelView({
 }) {
   const [status, setStatus] = useState<FuelStatus | null>(null),
     [postal, setPostal] = useState(""),
-    [query, setQuery] = useState<FuelQuery | null>(null),
-    [center, setCenter] = useState(germany),
-    [result, setResult] = useState<FuelResult | null>(null);
-  const [grade, setGrade] = useState<FuelGrade | "all">("all"),
+    [target, setTarget] = useState(germany),
+    [position, setPosition] = useState<FuelPoint | null>(null),
+    [result, setResult] = useState<FuelResult | null>(null),
     [radius, setRadius] = useState(10),
     [openOnly, setOpenOnly] = useState(false),
-    [selected, setSelected] = useState<string | null>(null);
-  const [error, setError] = useState(""),
-    [locationNote, setLocationNote] = useState(""),
+    [selected, setSelected] = useState<string | null>(null),
+    [error, setError] = useState(""),
     [locating, setLocating] = useState(false),
     [loading, setLoading] = useState(false),
     [signIn, setSignIn] = useState(false),
     [retryUntil, setRetryUntil] = useState(0),
     [now, setNow] = useState(Date.now());
   const alive = useRef(false),
+    searchLock = useRef(false),
     locationAttempt = useRef(0),
-    retrySeconds = Math.max(0, Math.ceil((retryUntil - now) / 1000));
+    priceAttempt = useRef(0),
+    point = useRef(germany),
+    resolvedPostal = useRef(""),
+    locationController = useRef<AbortController | null>(null),
+    priceController = useRef<AbortController | null>(null);
+  const retrySeconds = Math.max(0, Math.ceil((retryUntil - now) / 1000));
   const report = useCallback((e: unknown) => {
-    setError(
-      e instanceof Error
-        ? e.message
-        : "Die Suche konnte nicht abgeschlossen werden.",
-    );
+    setError(e instanceof Error ? e.message : "Suche fehlgeschlagen.");
     setSignIn(e instanceof SignInRequired);
     if (e instanceof FuelSearchError && e.retryAfter) {
       setRetryUntil(Date.now() + e.retryAfter * 1000);
@@ -83,10 +62,13 @@ export function FuelView({
     return () => {
       alive.current = false;
       locationAttempt.current++;
+      priceAttempt.current++;
+      locationController.current?.abort();
+      priceController.current?.abort();
     };
   }, []);
   useEffect(() => {
-    let canceled = false;
+    let cancelled = false;
     setStatus(null);
     if (!service) {
       setStatus({ enabled: false, reason: "key" });
@@ -95,16 +77,16 @@ export function FuelView({
     service
       .fuelStatus()
       .then((s) => {
-        if (!canceled) setStatus(s);
+        if (!cancelled) setStatus(s);
       })
       .catch((e) => {
-        if (!canceled) {
+        if (!cancelled) {
           setStatus({ enabled: false });
           report(e);
         }
       });
     return () => {
-      canceled = true;
+      cancelled = true;
     };
   }, [service, report]);
   useEffect(() => {
@@ -114,153 +96,202 @@ export function FuelView({
   }, [retryUntil]);
   const locate = useCallback(() => {
     const attempt = ++locationAttempt.current;
-    setLocationNote("");
+    locationController.current?.abort();
+    setError("");
     if (!navigator.geolocation) {
-      setLocationNote(
-        "Standortermittlung ist hier nicht verfügbar. Bitte per PLZ suchen.",
-      );
+      setError("Standort nicht verfügbar.");
       return;
     }
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      (p) => {
         if (!alive.current || attempt !== locationAttempt.current) return;
-        setLocating(false);
-        const point = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
+        const next = {
+          lat: p.coords.latitude,
+          lng: p.coords.longitude,
           label: "Mein Standort",
         };
-        setCenter(point);
-        setQuery({ lat: point.lat, lng: point.lng });
-      },
-      (failure) => {
-        if (!alive.current || attempt !== locationAttempt.current) return;
+        point.current = next;
+        resolvedPostal.current = "";
+        setPostal("");
+        setPosition(next);
+        setTarget(next);
         setLocating(false);
-        setLocationNote(
-          failure.code === 1
-            ? "Standort nicht freigegeben. Du kannst stattdessen per PLZ suchen."
-            : "Standort konnte nicht ermittelt werden. Bitte per PLZ suchen.",
-        );
+      },
+      () => {
+        if (alive.current && attempt === locationAttempt.current) {
+          setLocating(false);
+          setError("Standort nicht verfügbar.");
+        }
       },
       { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 },
     );
   }, []);
   useEffect(() => {
-    let canceled = false;
-    if (!testMode)
-      queueMicrotask(() => {
-        if (!canceled) locate();
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [locate, testMode]);
-  useEffect(() => {
-    if (!service || !status?.enabled || !query) return;
-    const controller = new AbortController();
-    let canceled = false;
-    setLoading(true);
-    setError("");
-    setResult(null);
-    setSelected(null);
-    service
-      .searchFuel(query, controller.signal)
-      .then((data) => {
-        if (!canceled) {
-          setResult(data);
-          setCenter(
-            "postalCode" in query
-              ? data.center
-              : { ...query, label: "Mein Standort" },
-          );
-          setSignIn(false);
-        }
-      })
-      .catch((e) => {
-        if (!canceled) report(e);
-      })
-      .finally(() => {
-        if (!canceled) setLoading(false);
-      });
-    return () => {
-      canceled = true;
-      controller.abort();
-    };
-  }, [query, status?.enabled, service, report]);
-  const found = useMemo(
-    () => matchingStations(result?.stations ?? [], grade, radius, openOnly),
-    [result, grade, radius, openOnly],
-  );
-  const selectStation = useCallback((id: string) => setSelected(id), []);
-  function postalSearch(event: FormEvent) {
-    event.preventDefault();
+    if (!testMode) locate();
+  }, [testMode, locate]);
+  const moved = useCallback((next: FuelPoint, byUser: boolean) => {
+    point.current = next;
+    if (byUser) {
+      locationAttempt.current++;
+      locationController.current?.abort();
+      setLocating(false);
+      resolvedPostal.current = "";
+      setPostal("");
+    }
+  }, []);
+  async function showPostal(): Promise<FuelPoint | null> {
     const code = postal.trim();
     if (!/^\d{5}$/.test(code)) {
       setError("Bitte eine fünfstellige deutsche PLZ eingeben.");
-      return;
+      return null;
     }
-    locationAttempt.current++;
-    setLocating(false);
-    setLocationNote("");
-    setQuery({ postalCode: code });
+    if (!service) return null;
+    const attempt = ++locationAttempt.current,
+      controller = new AbortController();
+    locationController.current?.abort();
+    locationController.current = controller;
+    setLocating(true);
+    setError("");
+    try {
+      const next = await service.resolveFuelLocation(code, controller.signal);
+      if (
+        !alive.current ||
+        controller.signal.aborted ||
+        attempt !== locationAttempt.current
+      )
+        return null;
+      point.current = next;
+      resolvedPostal.current = code;
+      setTarget(next);
+      return next;
+    } catch (e) {
+      if (
+        alive.current &&
+        !controller.signal.aborted &&
+        attempt === locationAttempt.current
+      )
+        report(e);
+      return null;
+    } finally {
+      if (alive.current && attempt === locationAttempt.current)
+        setLocating(false);
+    }
   }
-  const disabled = loading || retrySeconds > 0 || !status?.enabled;
+  async function search() {
+    if (!service || searchLock.current || retrySeconds || !status?.enabled)
+      return;
+    searchLock.current = true;
+    const attempt = ++priceAttempt.current,
+      controller = new AbortController();
+    priceController.current?.abort();
+    priceController.current = controller;
+    setLoading(true);
+    setError("");
+    try {
+      const next =
+        postal.trim() && postal.trim() !== resolvedPostal.current
+          ? await showPostal()
+          : point.current;
+      if (
+        !next ||
+        !alive.current ||
+        attempt !== priceAttempt.current ||
+        controller.signal.aborted
+      )
+        return;
+      const data = await service.searchFuel(
+        { lat: next.lat, lng: next.lng },
+        controller.signal,
+      );
+      if (
+        !alive.current ||
+        attempt !== priceAttempt.current ||
+        controller.signal.aborted
+      )
+        return;
+      setResult(data);
+      setSelected(null);
+      setSignIn(false);
+    } catch (e) {
+      if (
+        alive.current &&
+        attempt === priceAttempt.current &&
+        !controller.signal.aborted
+      )
+        report(e);
+    } finally {
+      searchLock.current = false;
+      if (alive.current && attempt === priceAttempt.current) setLoading(false);
+    }
+  }
+  const found = useMemo(
+    () => matchingStations(result?.stations ?? [], "all", radius, openOnly),
+    [result, radius, openOnly],
+  );
+  const selectStation = useCallback((id: string) => setSelected(id), []);
   return (
     <section className="fuel-view">
       <div className="fuel-toolbar panel">
-        <form onSubmit={postalSearch} className="fuel-search-form">
+        <form
+          className="fuel-search-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void showPostal();
+          }}
+        >
           <label className="field">
-            <span>PLZ in Deutschland</span>
+            <span>PLZ</span>
             <div className="fuel-postal-input">
               <MapPin size={18} />
               <input
-                aria-label="PLZ in Deutschland"
+                aria-label="PLZ"
                 value={postal}
-                onChange={(e) => setPostal(e.target.value)}
-                placeholder="z. B. 10115"
+                onChange={(e) => {
+                  locationAttempt.current++;
+                  locationController.current?.abort();
+                  setLocating(false);
+                  setPostal(e.target.value);
+                }}
+                placeholder="10115"
                 inputMode="numeric"
                 autoComplete="postal-code"
                 maxLength={5}
-                pattern="[0-9]{5}"
-                required
               />
             </div>
           </label>
-          <button className="button primary" disabled={disabled}>
-            <Search size={17} /> Suchen
+          <button
+            type="submit"
+            className="icon-button"
+            aria-label="Ort anzeigen"
+            title="Ort anzeigen"
+            disabled={locating || !postal.trim()}
+          >
+            <MapPin size={18} />
           </button>
         </form>
         <button
-          className="button"
+          className="icon-button"
           onClick={locate}
-          disabled={locating || loading || retrySeconds > 0}
+          disabled={locating}
+          title="Mein Standort"
+          aria-label="Mein Standort"
         >
-          <LocateFixed size={17} />
-          {locating ? "Standort wird ermittelt …" : "Mein Standort"}
+          <LocateFixed size={19} />
         </button>
-        <a
-          className="fuel-external"
-          href={externalUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          className="button primary"
+          onClick={() => void search()}
+          disabled={loading || locating || retrySeconds > 0 || !status?.enabled}
         >
-          Externe Tankpreis-Seite <ArrowUpRight size={15} />
-        </a>
+          <Search size={17} />
+          {loading
+            ? "Suche läuft …"
+            : retrySeconds
+              ? "Suchen (" + retrySeconds + "s)"
+              : "Suchen"}
+        </button>
         <div className="fuel-filters">
-          <label className="field">
-            <span>Kraftstoff</span>
-            <select
-              value={grade}
-              onChange={(e) => setGrade(e.target.value as FuelGrade | "all")}
-            >
-              {Object.entries(gradeLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="field">
             <span>Umkreis</span>
             <select
@@ -279,29 +310,29 @@ export function FuelView({
               type="checkbox"
               checked={openOnly}
               onChange={(e) => setOpenOnly(e.target.checked)}
-            />{" "}
+            />
             Nur geöffnet
           </label>
+          <a
+            className="fuel-external"
+            href={externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Externe Suche <ArrowUpRight size={15} />
+          </a>
         </div>
-        <p className="fuel-permission-note">
-          Standortfreigabe ist optional. Alternativ per PLZ suchen.
-        </p>
       </div>
       {status && !status.enabled && !error && (
         <p className="banner warning" role="status">
           {testMode
-            ? "Lokaler Testmodus: Hier werden keine Livepreise abgefragt."
-            : "Die integrierten Livepreise sind noch nicht eingerichtet. Die Karte und der externe Link sind bereits nutzbar."}
-        </p>
-      )}
-      {locationNote && (
-        <p className="banner warning" role="status">
-          {locationNote}
+            ? "Keine Livepreise im Testmodus."
+            : "Livepreise nicht eingerichtet."}
         </p>
       )}
       {error && (
         <div className="banner danger" role="alert">
-          <span>{error}</span>
+          {error}
           {signIn && onReconnect && (
             <button className="button" onClick={onReconnect}>
               Erneut anmelden
@@ -309,18 +340,14 @@ export function FuelView({
           )}
         </div>
       )}
-      {retrySeconds > 0 && (
-        <p className="muted" role="status">
-          Neue Suche in {retrySeconds} Sekunden möglich.
-        </p>
-      )}
       <div className="fuel-layout">
         <FuelMap
-          center={center}
+          center={target}
+          position={position}
           stations={found}
-          grade={grade}
           selected={selected}
           onSelect={selectStation}
+          onViewChange={moved}
         />
         <section
           className="panel fuel-results"
@@ -332,38 +359,16 @@ export function FuelView({
                 ? "Preise werden geladen …"
                 : result
                   ? found.length + " Tankstellen"
-                  : "Tankstellen in der Nähe"}
+                  : "Tankstellen"}
             </h2>
-            <button
-              className="icon-button"
-              title="Preise erneut abrufen"
-              aria-label="Preise erneut abrufen"
-              disabled={disabled || !query}
-              onClick={() => query && setQuery({ ...query })}
-            >
-              <RefreshCw size={18} />
-            </button>
           </div>
-          <p className="muted fuel-search-location">
-            <MapPin size={14} />
-            {center.label}
-          </p>
-          {loading && <p role="status">Tankpreise werden abgerufen …</p>}
           {!result && !loading && (
             <div className="fuel-empty">
               <Fuel size={30} />
-              <p>
-                {status?.enabled
-                  ? "Standort freigeben oder eine PLZ eingeben."
-                  : "Die Karte lässt sich bereits verschieben und vergrößern."}
-              </p>
             </div>
           )}
           {result && !loading && !found.length && (
-            <p>
-              Keine passenden Tankstellen im gewählten Umkreis. Prüfe Kraftstoff
-              und Filter oder vergrößere den Umkreis.
-            </p>
+            <p>Keine Tankstellen im gewählten Umkreis.</p>
           )}
           {found.map((station) => (
             <article
@@ -393,12 +398,9 @@ export function FuelView({
                 </span>
               </button>
               <div className="fuel-station-prices">
-                {(grade === "all"
-                  ? (["e5", "e10", "diesel"] as const)
-                  : [grade]
-                ).map((g) => (
+                {(Object.keys(grades) as (keyof typeof grades)[]).map((g) => (
                   <div key={g}>
-                    <span>{gradeLabels[g]}</span>
+                    <span>{grades[g]}</span>
                     <strong>
                       {fuelPrice(station.prices[g])}
                       <small> / l</small>
@@ -430,7 +432,7 @@ export function FuelView({
                 hour: "2-digit",
                 minute: "2-digit",
               })}{" "}
-              Uhr{result.cached ? " · zwischengespeichert" : ""}
+              Uhr{result.cached ? " · Cache" : ""}
               <br />
               Preise:{" "}
               <a

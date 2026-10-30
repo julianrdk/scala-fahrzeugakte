@@ -1,0 +1,155 @@
+.entry-editor {
+  max-width: 1000px;
+}
+.entry-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.entry-heading > .field {
+  width: 230px;
+}
+.entry-assistant-link {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 0 0 20px;
+  text-align: left;
+  color: var(--accent, var(--green));
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+.entry-assistant-link:hover {
+  text-decoration: underline;
+}
+.entry-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.entry-card {
+  margin: 0 0 22px;
+  padding: 0 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+.entry-card h2 {
+  font-size: 17px;
+}
+.entry-cost {
+  border: 1px solid var(--line);
+  padding: 12px 18px;
+  border-radius: 9px;
+}
+.entry-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.entry-documents > summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.entry-file {
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+}
+.entry-file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  min-width: 100%;
+  min-height: 100%;
+}
+.entry-document {
+  margin-top: 14px;
+  padding: 15px;
+  background: #f8f9f6;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.entry-document .section-heading strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.entry-document a {
+  font-size: 12px;
+}
+.entry-ocr {
+  margin-top: 16px;
+}
+.entry-ocr > .button {
+  margin-bottom: 4px;
+}
+.entry-scan-preview {
+  margin: 15px 0;
+  max-width: 600px;
+}
+.entry-scan-preview img {
+  display: block;
+  width: 100%;
+  max-height: 650px;
+  object-fit: contain;
+  margin: 12px 0;
+  border-radius: 6px;
+}
+.entry-suggested {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 5px;
+  background: #fff4d7;
+  color: #755713;
+  font-size: 12px;
+  margin: 0 0 15px;
+}
+.entry-save {
+  margin-top: 15px;
+  min-width: 160px;
+}
+.entry-editor .entry-links {
+  margin-bottom: 0;
+}
+.entry-editor .field:has(> .check) {
+  display: block;
+}
+.entry-evidence {
+  font-size: 12px;
+}
+.entry-evidence dl > div {
+  margin: 10px 0;
+}
+.entry-evidence dt {
+  font-weight: 600;
+}
+.entry-evidence dd {
+  margin: 4px 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .entry-editor {
+    padding: 18px 15px;
+  }
+  .entry-cost {
+    padding: 10px 12px;
+  }
+  .entry-heading > .field {
+    width: 100%;
+  }
+  .entry-save {
+    width: 100%;
+  }
+  .entry-card .section-heading {
+    gap: 10px;
+  }
+}
+.entry-editor .field-suggested :is(input, textarea, select) {
+  border-color: #bd922c;
+  background: #fffcef;
+}
+.entry-editor .field-suggested > span {
+  color: #7a5b13;
+}
